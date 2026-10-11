@@ -13,6 +13,18 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+# Display logo and title side-by-side
+if os.path.exists("logo.png") or os.path.exists("logo.jpg"):
+  logo_file = "logo.png" if os.path.exists("logo.png") else "logo.jpg"
+  col_logo, col_title = st.columns([1, 6])
+  with col_logo:
+    st.image(logo_file, width=80)
+  with col_title:
+    st.title(t("title").replace("🛡️ ", ""))
+    st.caption(t("subtitle"))
+else:
+  st.title(t("title"))
+  st.caption(t("subtitle"))
 
 # Set favicon: uses logo.png if present, otherwise shield icon
 icon = "logo.png" if os.path.exists("logo.png") else "🛡️"
