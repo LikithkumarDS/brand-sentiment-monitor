@@ -1,5 +1,6 @@
 from collections import Counter
 from datetime import datetime, timedelta
+import json
 import random
 import re
 import urllib.parse
@@ -18,7 +19,7 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# 1. 35-LANGUAGE LOCALIZATION ENGINE (INCLUDING KONKANI)
+# 1. 35-LANGUAGE LOCALIZATION ENGINE
 # ==============================================================================
 LANGUAGES = {
     "English": "en",
@@ -237,17 +238,316 @@ TRANSLATIONS = {
         "table_section": "3. उल्लेख एक्सप्लोरर और विवरण",
         "download_btn": "📥 {brand} डेटा को CSV के रूप में डाउनलोड करें",
     },
+    "తెలుగు (Telugu)": {
+        "title": "🛡️ బ్రాండ్ సెంటిమెంట్ & రెప్యుటేషన్ మానిటర్",
+        "subtitle": (
+            "డేటా సైన్స్: VADER & BERT NLP | ఎనలిటిక్స్: షేర్ ఆఫ్ వాయిస్ & సంక్షోభ"
+            " హెచ్చరిక"
+        ),
+        "settings_header": "⚙️ బ్రాండ్ & భాషా సెట్టింగ్‌లు",
+        "target_brand": "లక్ష్య బ్రాండ్",
+        "competitors": "పోటీదారులు",
+        "z_slider": "సంక్షోభ హెచ్చరిక సున్నితత్వం (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} కోసం సంక్షోభ హెచ్చరిక!",
+        "time_window": "సమయ విండో",
+        "z_anomaly": "Z-స్కోర్ అసాధారణత",
+        "neg_volume": "ప్రతికూల పరిమాణం",
+        "articles": "ప్రస్తావనలు",
+        "nss": "నికర సెంటిమెంట్ స్కోర్ (NSS)",
+        "normal_status": (
+            "✅ సాధారణ స్థితి: {brand} కోసం ప్రతికూల సంక్షోభం కనుగొనబడలేదు."
+        ),
+        "dispatch_expander": "📢 హెచ్చరికను పంపండి (Webhook / Email)",
+        "dispatch_btn": "🚀 PR బృందానికి హెచ్చరిక పంపండి",
+        "dispatch_success": "హెచ్చరిక విజయవంతంగా పంపబడింది!",
+        "kpi_total": "మొత్తం ప్రస్తావనలు",
+        "kpi_nss": "నికర సెంటిమెంట్ స్కోర్",
+        "kpi_pos": "సానుకూల ప్రస్తావనలు",
+        "kpi_neg": "ప్రతికూల ప్రస్తావనలు",
+        "sov_section": "1. షేర్ ఆఫ్ వాయిస్ (SoV)",
+        "sov_donut_title": "వాల్యూమ్ ప్రకారం SoV (%)",
+        "sov_bar_title": "వాల్యూమ్ vs రీచ్ SoV (%)",
+        "metric_label": "మెట్రిక్",
+        "trends_section": "2. సెంటిమెంట్ ట్రెండ్‌లు ({brand})",
+        "neg_vol_legend": "ప్రతికూల పరిమాణం",
+        "pos_vol_legend": "సానుకూల పరిమాణం",
+        "nss_legend": "నికర సెంటిమెంట్",
+        "mention_axis": "ప్రస్తావనల సంఖ్య",
+        "nss_axis": "సెంటిమెంట్ (-100 to +100)",
+        "top_keywords_title": "ముఖ్య ప్రతికూల కీలక పదాలు",
+        "freq_label": "ఫ్రీక్వెన్సీ",
+        "keyword_label": "కీలక పదం",
+        "no_keywords": "ప్రతికూల పదాలు లేవు.",
+        "table_section": "3. ప్రస్తావనల పట్టిక & వివరాలు",
+        "download_btn": "📥 {brand} CSV ఫైల్‌ను డౌన్‌లోడ్ చేయండి",
+    },
+    "தமிழ் (Tamil)": {
+        "title": "🛡️ பிராண்ட் உணர்வு & நற்பெயர் கண்காணிப்பாளர்",
+        "subtitle": (
+            "டேட்டா சயின்ஸ்: VADER & BERT NLP | அனலிட்டிக்ஸ்: வாய்ஸ் ஷேர் &"
+            " நெருக்கடி எச்சரிக்கை"
+        ),
+        "settings_header": "⚙️ அமைப்புகள் & மொழி",
+        "target_brand": "இலக்கு பிராண்ட்",
+        "competitors": "போட்டியாளர்கள்",
+        "z_slider": "எச்சரிக்கை உணர்திறன் (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} நெருக்கடி எச்சரிக்கை!",
+        "time_window": "நேர சாளரம்",
+        "z_anomaly": "Z-மதிப்பெண் முரண்பாடு",
+        "neg_volume": "எதிர்மறை அளவு",
+        "articles": "பதிவுகள்",
+        "nss": "நிகர உணர்வு மதிப்பெண்",
+        "normal_status": "✅ இயல்பான நிலை: நெருக்கடி கண்டறியப்படவில்லை.",
+        "dispatch_expander": "📢 எச்சரிக்கை அனுப்பு (Webhook / Email)",
+        "dispatch_btn": "🚀 PR குழுவிற்கு எச்சரிக்கை அனுப்பு",
+        "dispatch_success": "எச்சரிக்கை வெற்றிகரமாக அனுப்பப்பட்டது!",
+        "kpi_total": "மொத்த பதிவுகள்",
+        "kpi_nss": "நிகர உணர்வு",
+        "kpi_pos": "நேர்மறை பதிவுகள்",
+        "kpi_neg": "எதிர்மறை பதிவுகள்",
+        "sov_section": "1. வாய்ஸ் ஷேர் (SoV)",
+        "sov_donut_title": "அளவு வாய்ஸ் ஷேர் (%)",
+        "sov_bar_title": "அளவு vs சென்றடைவு SoV (%)",
+        "metric_label": "அளவீடு",
+        "trends_section": "2. போக்குகள் & முக்கிய வார்த்தைகள் ({brand})",
+        "neg_vol_legend": "எதிர்மறை அளவு",
+        "pos_vol_legend": "நேர்மறை அளவு",
+        "nss_legend": "நிகர உணர்வு",
+        "mention_axis": "பதிவுகளின் எண்ணிக்கை",
+        "nss_axis": "உணர்வு (-100 to +100)",
+        "top_keywords_title": "முக்கிய எதிர்மறை வார்த்தைகள்",
+        "freq_label": "அதிர்வெண்",
+        "keyword_label": "முக்கிய வார்த்தை",
+        "no_keywords": "வார்த்தைகள் இல்லை.",
+        "table_section": "3. பதிவுகள் பட்டியல்",
+        "download_btn": "📥 {brand} CSV தரவிறக்கம்",
+    },
+    "Español (Spanish)": {
+        "title": "🛡️ Monitor de Reputación y Sentimiento de Marca",
+        "subtitle": (
+            "Ciencia de Datos: VADER y BERT NLP | Analítica: Cuota de Voz y"
+            " Alerta de Crisis"
+        ),
+        "settings_header": "⚙️ Configuración de Marca e Idioma",
+        "target_brand": "Marca Objetivo",
+        "competitors": "Competidores",
+        "z_slider": "Sensibilidad de Alerta de Crisis (Z-Score)",
+        "crisis_alert_title": (
+            "🚨 ALERTA DE CRISIS DE RP DETECTADA PARA {brand}"
+        ),
+        "time_window": "Ventana de Tiempo",
+        "z_anomaly": "Anomalía Z-Score",
+        "neg_volume": "Volumen Negativo",
+        "articles": "menciones",
+        "nss": "Puntuación Neta de Sentimiento (NSS)",
+        "normal_status": (
+            "✅ Estado Normal: No se detectaron picos negativos para {brand}."
+        ),
+        "dispatch_expander": "📢 Enviar Alerta de Crisis (Webhook / Correo)",
+        "dispatch_btn": "🚀 Enviar Webhook al Equipo de RP",
+        "dispatch_success": "¡Notificación enviada con éxito!",
+        "kpi_total": "Total de Menciones",
+        "kpi_nss": "Sentimiento Neto",
+        "kpi_pos": "Menciones Positivas",
+        "kpi_neg": "Menciones Negativas",
+        "sov_section": "1. Cuota de Voz (SoV)",
+        "sov_donut_title": "Cuota de Voz por Volumen (%)",
+        "sov_bar_title": "SoV Volumen vs. SoV Alcance (%)",
+        "metric_label": "Métrica",
+        "trends_section": "2. Tendencias de Sentimiento ({brand})",
+        "neg_vol_legend": "Volumen Negativo",
+        "pos_vol_legend": "Volumen Positivo",
+        "nss_legend": "Sentimiento Neto",
+        "mention_axis": "Cantidad de Menciones",
+        "nss_axis": "Sentimiento Neto (-100 a +100)",
+        "top_keywords_title": "Palabras Clave Negativas",
+        "freq_label": "Frecuencia",
+        "keyword_label": "Palabra Clave",
+        "no_keywords": "No se encontraron palabras clave negativas.",
+        "table_section": "3. Explorador de Menciones",
+        "download_btn": "📥 Descargar Datos de {brand} en CSV",
+    },
+    "Français (French)": {
+        "title": "🛡️ Moniteur de Réputation et Sentiment de Marque",
+        "subtitle": (
+            "Data Science : NLP VADER & BERT | Analytique : Part de Voix &"
+            " Alerte de Crise"
+        ),
+        "settings_header": "⚙️ Paramètres et Langue",
+        "target_brand": "Marque Cible",
+        "competitors": "Concurrents",
+        "z_slider": "Sensibilité d'Alerte de Crise (Score Z)",
+        "crisis_alert_title": "🚨 ALERTE DE CRISE RP DÉTECTÉE POUR {brand}",
+        "time_window": "Fenêtre Temporelle",
+        "z_anomaly": "Anomalie Score Z",
+        "neg_volume": "Volume Négatif",
+        "articles": "mentions",
+        "nss": "Score Net de Sentiment (NSS)",
+        "normal_status": (
+            "✅ Statut Normal : Aucun pic négatif détecté pour {brand}."
+        ),
+        "dispatch_expander": "📢 Déclencher Alerte de Crise (Webhook / Email)",
+        "dispatch_btn": "🚀 Envoyer Webhook à l'Équipe RP",
+        "dispatch_success": "Notification envoyée avec succès !",
+        "kpi_total": "Total des Mentions",
+        "kpi_nss": "Sentiment Net",
+        "kpi_pos": "Mentions Positives",
+        "kpi_neg": "Mentions Négatives",
+        "sov_section": "1. Part de Voix (SoV)",
+        "sov_donut_title": "Part de Voix par Volume (%)",
+        "sov_bar_title": "SoV Volume vs. SoV Portée (%)",
+        "metric_label": "Métrique",
+        "trends_section": "2. Tendances de Sentiment ({brand})",
+        "neg_vol_legend": "Volume Négatif",
+        "pos_vol_legend": "Volume Positif",
+        "nss_legend": "Sentiment Net",
+        "mention_axis": "Nombre de Mentions",
+        "nss_axis": "Sentiment Net (-100 à +100)",
+        "top_keywords_title": "Mots-Clés Négatifs Principaux",
+        "freq_label": "Fréquence",
+        "keyword_label": "Mot-Clé",
+        "no_keywords": "Aucun mot négatif trouvé.",
+        "table_section": "3. Explorateur de Mentions",
+        "download_btn": "📥 Télécharger les Données de {brand} en CSV",
+    },
+    "Deutsch (German)": {
+        "title": "🛡️ Marken-Sentiment & Reputations-Monitor",
+        "subtitle": (
+            "Data Science: VADER & BERT NLP | Analytik: Share of Voice &"
+            " PR-Krisenwarnung"
+        ),
+        "settings_header": "⚙️ Einstellungen & Sprache",
+        "target_brand": "Zielmarke",
+        "competitors": "Wettbewerber",
+        "z_slider": "Krisenalarm-Empfindlichkeit (Z-Score)",
+        "crisis_alert_title": "🚨 PR-KRISENALARM FÜR {brand} ERKANNT",
+        "time_window": "Zeitfenster",
+        "z_anomaly": "Z-Score-Anomalie",
+        "neg_volume": "Negatives Volumen",
+        "articles": "Erwähnungen",
+        "nss": "Netto-Sentiment-Wert (NSS)",
+        "normal_status": (
+            "✅ Normaler Status: Keine negativen Spitzenwerte für {brand}."
+        ),
+        "dispatch_expander": "📢 Krisenalarm Senden (Webhook / E-Mail)",
+        "dispatch_btn": "🚀 Webhook an PR-Team Senden",
+        "dispatch_success": "Benachrichtigung erfolgreich gesendet!",
+        "kpi_total": "Gesamterwähnungen",
+        "kpi_nss": "Netto-Sentiment",
+        "kpi_pos": "Positive Erwähnungen",
+        "kpi_neg": "Negative Erwähnungen",
+        "sov_section": "1. Share of Voice (SoV)",
+        "sov_donut_title": "Share of Voice nach Volumen (%)",
+        "sov_bar_title": "Volumen-SoV vs. Reichweiten-SoV (%)",
+        "metric_label": "Metrik",
+        "trends_section": "2. Sentiment-Trends ({brand})",
+        "neg_vol_legend": "Negatives Volumen",
+        "pos_vol_legend": "Positives Volumen",
+        "nss_legend": "Netto-Sentiment",
+        "mention_axis": "Anzahl Erwähnungen",
+        "nss_axis": "Netto-Sentiment (-100 bis +100)",
+        "top_keywords_title": "Negative Treiber-Schlagwörter",
+        "freq_label": "Häufigkeit",
+        "keyword_label": "Schlagwort",
+        "no_keywords": "Keine negativen Schlagwörter gefunden.",
+        "table_section": "3. Erwähnungs-Explorer",
+        "download_btn": "📥 Daten für {brand} als CSV Herunterladen",
+    },
+    "日本語 (Japanese)": {
+        "title": "🛡️ ブランド・センチメント＆評判モニター",
+        "subtitle": (
+            "データサイエンス: VADER & BERT NLP | 分析: シェア・オブ・ボイス &"
+            " PR危機アラート"
+        ),
+        "settings_header": "⚙️ ブランドと言語の設定",
+        "target_brand": "対象ブランド",
+        "competitors": "競合他社",
+        "z_slider": "危機アラート感度 (Zスコア)",
+        "crisis_alert_title": "🚨 {brand} のPR危機アラートを検知！",
+        "time_window": "検知ウィンドウ",
+        "z_anomaly": "Zスコア異常値",
+        "neg_volume": "ネガティブ量",
+        "articles": "言及数",
+        "nss": "純感情スコア (NSS)",
+        "normal_status": (
+            "✅ 正常ステータス: {brand} に異常なネガティブ急増はありません。"
+        ),
+        "dispatch_expander": "📢 危機アラートを送信 (Webhook / メール)",
+        "dispatch_btn": "🚀 PRチームにアラートを送信",
+        "dispatch_success": "通知が正常に送信されました！",
+        "kpi_total": "総言及数",
+        "kpi_nss": "純感情スコア",
+        "kpi_pos": "ポジティブ言及",
+        "kpi_neg": "ネガティブ言及",
+        "sov_section": "1. シェア・オブ・ボイス (SoV)",
+        "sov_donut_title": "言及量シェア (%)",
+        "sov_bar_title": "言及量 vs リーチ加重 SoV (%)",
+        "metric_label": "指標",
+        "trends_section": "2. 感情トレンド ({brand})",
+        "neg_vol_legend": "ネガティブ量",
+        "pos_vol_legend": "ポジティブ量",
+        "nss_legend": "純感情 (NSS)",
+        "mention_axis": "言及数",
+        "nss_axis": "純感情スコア (-100 〜 +100)",
+        "top_keywords_title": "主なネガティブ・キーワード",
+        "freq_label": "頻度",
+        "keyword_label": "キーワード",
+        "no_keywords": "ネガティブキーワードは見つかりませんでした。",
+        "table_section": "3. 言及エクスプローラー",
+        "download_btn": "📥 {brand} のデータをCSVでダウンロード",
+    },
 }
 
-# Language selection
 selected_lang = st.sidebar.selectbox(
     "🌐 Language / ಭಾಷೆ / भाषा", list(LANGUAGES.keys()), index=0
 )
 
 
+@st.cache_data(show_spinner=False)
+def translate_batch(target_code: str) -> dict:
+  """Translates the base dictionary in a single fast call for other languages."""
+  base_dict = TRANSLATIONS["English"]
+  if target_code == "en":
+    return base_dict
+
+  keys = list(base_dict.keys())
+  safe_lines = [base_dict[k].replace("{brand}", "XYZ_BRAND") for k in keys]
+  payload = "\n".join(safe_lines)
+
+  try:
+    encoded = urllib.parse.quote(payload)
+    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl={target_code}&dt=t&q={encoded}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            )
+        },
+    )
+    with urllib.request.urlopen(req, timeout=3.0) as resp:
+      res_json = json.loads(resp.read().decode("utf-8"))
+      translated_full = "".join([part[0] for part in res_json[0] if part[0]])
+      translated_lines = translated_full.split("\n")
+
+      if len(translated_lines) == len(keys):
+        return {
+            k: translated_lines[i].replace("XYZ_BRAND", "{brand}")
+            for i, k in enumerate(keys)
+        }
+  except Exception:
+    pass
+  return base_dict
+
+
 def t(key: str, **kwargs) -> str:
-  lang_dict = TRANSLATIONS.get(selected_lang, TRANSLATIONS["English"])
-  text = lang_dict.get(key, TRANSLATIONS["English"].get(key, key))
+  lang_code = LANGUAGES.get(selected_lang, "en")
+  if selected_lang in TRANSLATIONS and key in TRANSLATIONS[selected_lang]:
+    text = TRANSLATIONS[selected_lang][key]
+  else:
+    trans_map = translate_batch(lang_code)
+    text = trans_map.get(key, TRANSLATIONS["English"].get(key, key))
+
   if kwargs:
     try:
       text = text.format(**kwargs)
@@ -415,10 +715,11 @@ if not active_crises.empty:
   st.error(
       f"{t('crisis_alert_title', brand=selected_brand.upper())}\n\n"
       f"- **{t('time_window')}:**"
-      f" {active_crises.index[-1].strftime('%Y-%m-%d %H:%M')}\n- **{t('z_anomaly')}:**"
-      f" {latest_crisis['z_score']:.2f}σ\n- **{t('neg_volume')}:**"
-      f" {int(latest_crisis['negative'])} {t('articles')}\n- **{t('nss')}:**"
-      f" {latest_crisis['nss']:.1f}"
+      f" {active_crises.index[-1].strftime('%Y-%m-%d %H:%M')}\n"
+      f"- **{t('z_anomaly')}:** {latest_crisis['z_score']:.2f}σ\n"
+      f"- **{t('neg_volume')}:** {int(latest_crisis['negative'])}"
+      f" {t('articles')}\n"
+      f"- **{t('nss')}:** {latest_crisis['nss']:.1f}"
   )
 
   with st.expander(t("dispatch_expander")):
@@ -549,7 +850,7 @@ with trend_col:
           overlaying="y",
           side="right",
           range=[-105, 105],
-      ),
+        ),
       legend=dict(x=0, y=1.1, orientation="h"),
   )
   st.plotly_chart(fig_trends, use_container_width=True)
