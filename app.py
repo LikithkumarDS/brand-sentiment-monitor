@@ -13,12 +13,11 @@ import requests
 import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-st.set_page_config(
-    page_title="Brand Sentiment & Reputation Monitor",
-    layout="wide",
-    page_icon="🛡️",
-)
+import os
 
+# Display logo at the top of the sidebar
+if os.path.exists("logo.png"):
+  st.sidebar.image("logo.png", use_container_width=True)
 # ==============================================================================
 # MINIMALIST BLACK & CHARCOAL GRAY STYLING
 # ==============================================================================
