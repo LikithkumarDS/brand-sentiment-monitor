@@ -1,18 +1,13 @@
 from collections import Counter
 from datetime import datetime, timedelta
-import email.utils
-import json
 import random
 import re
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
-from analytics_engine import compute_share_of_voice, detect_crisis_spikes
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
 import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
@@ -22,469 +17,47 @@ st.set_page_config(
     page_icon="🛡️",
 )
 
-st.title("🛡️ Brand Sentiment & Reputation Monitor")
-st.caption(
-    "Data Science Core: VADER & BERT NLP | Data Analytics Core: Share of Voice"
-    " & Live PR Crisis Engine"
-)
+# ==============================================================================
+# 1. 35-LANGUAGE LOCALIZATION ENGINE (INCLUDING KONKANI)
+# ==============================================================================
+LANGUAGES = {
+    "English": "en",
+    "ಕನ್ನಡ (Kannada)": "kn",
+    "ಕೊಂಕಣಿ / कोंकणी (Konkani)": "gom",
+    "हिन्दी (Hindi)": "hi",
+    "తెలుగు (Telugu)": "te",
+    "தமிழ் (Tamil)": "ta",
+    "മലയാളം (Malayalam)": "ml",
+    "मराठी (Marathi)": "mr",
+    "বাংলা (Bengali)": "bn",
+    "ગુજરાતી (Gujarati)": "gu",
+    "ਪੰਜਾਬੀ (Punjabi)": "pa",
+    "ଓଡ଼ಿଆ (Odia)": "or",
+    "অসমীয়া (Assamese)": "as",
+    "संस्कृतम् (Sanskrit)": "sa",
+    "मैथिली (Maithili)": "mai",
+    "اردو (Urdu)": "ur",
+    "Español (Spanish)": "es",
+    "Français (French)": "fr",
+    "Deutsch (German)": "de",
+    "Italiano (Italian)": "it",
+    "Português (Portuguese)": "pt",
+    "Русский (Russian)": "ru",
+    "Nederlands (Dutch)": "nl",
+    "Polski (Polish)": "pl",
+    "Svenska (Swedish)": "sv",
+    "Türkçe (Turkish)": "tr",
+    "العربية (Arabic)": "ar",
+    "فارسی (Persian)": "fa",
+    "日本語 (Japanese)": "ja",
+    "한국어 (Korean)": "ko",
+    "简体中文 (Chinese Simplified)": "zh-CN",
+    "繁體中文 (Chinese Traditional)": "zh-TW",
+    "Tiếng Việt (Vietnamese)": "vi",
+    "Bahasa Indonesia": "id",
+    "ภาษาไทย (Thai)": "th",
+}
 
-# ---------------- NLP CLASSIFIERS ----------------
-analyzer = SentimentIntensityAnalyzer()
-
-
-def score_text_vader(text: str):
-  compound = analyzer.polarity_scores(text)["compound"]
-  if compound >= 0.10:
-    return compound, "positive"
-  elif compound <= -0.10:
-    return compound, "negative"
-  return compound, "neutral"
-
-
-def score_text_bert(text: str):
-  """Contextual BERT/RoBERTa sentiment analysis via pure-Python (no local C-extension DLL blocks)."""
-  try:
-    API_URL = "https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest"
-    resp = requests.post(
-        API_URL, json={"inputs": text[:200]}, timeout=2.5
-    ).json()
-    if isinstance(resp, list) and len(resp) > 0:
-      top = max(resp[0], key=lambda x: x["score"])
-      return top["label"].lower(), round(top["score"], 3)
-  except Exception:
-    pass
-
-  # Contextual fallback when offline
-  v_score, v_label = score_text_vader(text)
-  return v_label, round(abs(v_score) * 0.95, 3)
-
-
-# ---------------- FEATURE 4: CUSTOM BRAND LEXICON EDITOR ----------------
-st.sidebar.header("⚙️ Settings & Data Source")
-
-with st.sidebar.expander("✏️ Custom Brand Lexicon Editor"):
-  st.caption("Adjust sentiment polarity for custom terms (-4.0 to +4.0)")
-  custom_word = st.text_input("Word / Slang (e.g. 'buggy', 'innovative')")
-  custom_score = st.slider("Polarity Score", -4.0, 4.0, 0.0, 0.5)
-  if st.button("Apply to VADER Lexicon") and custom_word.strip():
-    analyzer.lexicon.update({custom_word.strip().lower(): custom_score})
-    st.success(f"Added: '{custom_word.strip()}' = {custom_score}")
-
-# ---------------- FEATURE 1: BERT TOGGLE ----------------
-enable_bert = st.sidebar.checkbox("Enable BERT NLP Comparison", value=True)
-
-
-# ---------------- LIVE NEWS FETCHING ----------------
-def fetch_live_news_for_brand(brand: str, max_items: int = 35):
-  encoded_query = urllib.parse.quote(brand.strip())
-  url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
-  req = urllib.request.Request(
-      url,
-      headers={
-          "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          )
-      },
-  )
-
-  articles = []
-  try:
-    with urllib.request.urlopen(req, timeout=10) as response:
-      xml_data = response.read()
-    root = ET.fromstring(xml_data)
-    for item in root.findall(".//item")[:max_items]:
-      title = item.find("title").text if item.find("title") is not None else ""
-      link = item.find("link").text if item.find("link") is not None else ""
-      pub_date_str = (
-          item.find("pubDate").text
-          if item.find("pubDate") is not None
-          else None
-      )
-
-      if pub_date_str:
-        try:
-          dt = email.utils.parsedate_to_datetime(pub_date_str).replace(
-              tzinfo=None
-          )
-        except Exception:
-          dt = datetime.utcnow()
-      else:
-        dt = datetime.utcnow()
-
-      source_elem = item.find("source")
-      source_name = source_elem.text if source_elem is not None else "News"
-
-      comp, label = score_text_vader(title)
-      bert_label, bert_conf = score_text_bert(title) if enable_bert else (
-          "N/A",
-          0.0,
-      )
-
-      articles.append({
-          "timestamp": dt,
-          "brand": brand.strip(),
-          "text": title,
-          "source": source_name,
-          "link": link,
-          "reach": random.randint(1000, 20000),
-          "sentiment_score": comp,
-          "sentiment": label,
-          "bert_label": bert_label,
-          "bert_confidence": bert_conf,
-      })
-  except Exception as e:
-    st.error(f"Error fetching news for '{brand}': {e}")
-  return articles
-
-
-# ---------------- SIMULATED BENCHMARK ----------------
-def generate_demo_data():
-  np.random.seed(42)
-  base_time = datetime.now() - timedelta(days=7)
-  data = []
-  brands = ["TargetBrand", "CompetitorA", "CompetitorB"]
-
-  pos_examples = ["Love the product! Outstanding quality.", "Best tool ever!"]
-  neu_examples = [
-      "Package arrived today.",
-      "Reading the latest patch release notes.",
-  ]
-  neg_examples = [
-      "Critical security vulnerability exposed! Cancelling immediately.",
-      "Customer support is unresponsive, terrible service.",
-      "Defective battery issue reported in latest product batch.",
-  ]
-
-  for hour in range(24 * 7):
-    ts = base_time + timedelta(hours=hour)
-    for b in brands:
-      for _ in range(random.randint(2, 5)):
-        p = random.random()
-        txt = (
-            random.choice(pos_examples)
-            if p < 0.5
-            else (
-                random.choice(neu_examples)
-                if p < 0.8
-                else random.choice(neg_examples)
-            )
-        )
-        comp, label = score_text_vader(txt)
-        bert_label, bert_conf = score_text_bert(txt) if enable_bert else (
-            "N/A",
-            0.0,
-        )
-        data.append({
-            "timestamp": ts,
-            "brand": b,
-            "text": txt,
-            "source": "Social Media",
-            "link": "#",
-            "reach": random.randint(100, 2000),
-            "sentiment_score": comp,
-            "sentiment": label,
-            "bert_label": bert_label,
-            "bert_confidence": bert_conf,
-        })
-
-    # Crisis burst for TargetBrand at Day 6
-    if 135 <= hour <= 138:
-      for _ in range(18):
-        txt = (
-            "CRITICAL SECURITY VULNERABILITY! Immediate boycott of TargetBrand!"
-        )
-        comp, label = score_text_vader(txt)
-        bert_label, bert_conf = score_text_bert(txt) if enable_bert else (
-            "N/A",
-            0.0,
-        )
-        data.append({
-            "timestamp": ts,
-            "brand": "TargetBrand",
-            "text": txt,
-            "source": "Social Media",
-            "link": "#",
-            "reach": random.randint(1000, 8000),
-            "sentiment_score": comp,
-            "sentiment": label,
-            "bert_label": bert_label,
-            "bert_confidence": bert_conf,
-        })
-  return pd.DataFrame(data)
-
-
-# ---------------- SIDEBAR CONTROLS ----------------
-mode = st.sidebar.radio(
-    "Select Mode",
-    ["🌐 Live Real-World News", "🧪 Simulated Benchmark (with Crisis)"],
-)
-
-if mode == "🌐 Live Real-World News":
-  target_brand = st.sidebar.text_input("Target Brand", value="Tesla")
-  competitors_input = st.sidebar.text_input(
-      "Competitors (comma-separated)", value="BYD, Rivian"
-  )
-  z_thresh = st.sidebar.slider(
-      "Crisis Alert Sensitivity (Z-Score)", 1.5, 4.0, 2.5, 0.5
-  )
-
-  all_brands = [target_brand.strip()] + [
-      c.strip() for c in competitors_input.split(",") if c.strip()
-  ]
-
-  with st.spinner("Fetching live articles and calculating sentiment..."):
-    all_articles = []
-    for b in all_brands:
-      all_articles.extend(fetch_live_news_for_brand(b))
-    df = pd.DataFrame(all_articles)
-
-  selected_brand = target_brand.strip()
-
-else:
-  df = generate_demo_data()
-  selected_brand = st.sidebar.selectbox(
-      "Select Target Brand", options=df["brand"].unique(), index=0
-  )
-  z_thresh = st.sidebar.slider(
-      "Crisis Alert Sensitivity (Z-Score)", 2.0, 5.0, 3.0, 0.5
-  )
-
-if df.empty or selected_brand not in df["brand"].values:
-  st.warning(f"No articles found for '{selected_brand}'. Try another brand.")
-  st.stop()
-
-# ---------------- CRISIS ALERT & DISPATCHER (FEATURE 5) ----------------
-trends_df = detect_crisis_spikes(
-    df, target_brand=selected_brand, z_threshold=z_thresh
-)
-active_crises = (
-    trends_df[trends_df["is_crisis"]]
-    if not trends_df.empty and "is_crisis" in trends_df.columns
-    else pd.DataFrame()
-)
-
-if not active_crises.empty:
-  latest_crisis = active_crises.iloc[-1]
-  st.error(
-      f"🚨 **PR CRISIS SPIKE DETECTED FOR {selected_brand.upper()}**\n\n"
-      f"- **Anomaly Time Window:**"
-      f" {active_crises.index[-1].strftime('%Y-%m-%d %H:%M')}\n- **Z-Score"
-      f" Anomaly:** {latest_crisis['z_score']:.2f}σ above normal baseline\n-"
-      f" **Negative Volume:** {int(latest_crisis['negative'])} articles\n-"
-      f" **Net Sentiment Score (NSS):** {latest_crisis['nss']:.1f}"
-  )
-
-  with st.expander("📢 Dispatch PR Crisis Alert (Webhook / Email Preview)"):
-    alert_payload = {
-        "event": "PR_CRISIS_ALERT",
-        "brand": selected_brand,
-        "timestamp": str(active_crises.index[-1]),
-        "z_score": float(round(latest_crisis["z_score"], 2)),
-        "negative_volume": int(latest_crisis["negative"]),
-        "net_sentiment_score": float(round(latest_crisis["nss"], 1)),
-        "severity": (
-            "HIGH" if latest_crisis["z_score"] >= 3.5 else "MEDIUM"
-        ),
-    }
-    st.json(alert_payload)
-    if st.button("🚀 Send Simulated Webhook to PR Team (Slack/Email)"):
-      st.success(
-          f"Notification dispatched successfully to PR Slack Channel &"
-          f" alerts@{selected_brand.lower()}.com!"
-      )
-else:
-  st.success(
-      f"✅ **Normal Status**: No abnormal negative sentiment spikes detected"
-      f" for {selected_brand}."
-  )
-
-st.divider()
-
-# ---------------- TOP KPI CARDS ----------------
-brand_data = df[df["brand"] == selected_brand]
-total_m = len(brand_data)
-pos_m = (brand_data["sentiment"] == "positive").sum()
-neg_m = (brand_data["sentiment"] == "negative").sum()
-nss_score = ((pos_m - neg_m) / total_m * 100) if total_m > 0 else 0
-
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-kpi1.metric("Total Mentions", f"{total_m:,}")
-kpi2.metric("Net Sentiment Score", f"{nss_score:.1f}")
-kpi3.metric("Positive Mentions", f"{pos_m} ({(pos_m/total_m*100):.1f}%)")
-kpi4.metric("Negative Mentions", f"{neg_m} ({(neg_m/total_m*100):.1f}%)")
-
-st.divider()
-
-# ---------------- SECTION 1: SHARE OF VOICE ----------------
-st.subheader("1. Share of Voice (SoV) Tracking")
-sov_df = compute_share_of_voice(df)
-
-col1, col2 = st.columns([1, 1])
-with col1:
-  fig_sov = px.pie(
-      sov_df,
-      names="brand",
-      values="volume_sov_pct",
-      hole=0.4,
-      title="Mention Volume Share of Voice (%)",
-  )
-  st.plotly_chart(fig_sov, use_container_width=True)
-
-with col2:
-  fig_reach = px.bar(
-      sov_df,
-      x="brand",
-      y=["volume_sov_pct", "reach_sov_pct"],
-      barmode="group",
-      title="Volume SoV vs. Reach-Weighted SoV (%)",
-      labels={"value": "Percentage (%)", "variable": "Metric"},
-  )
-  st.plotly_chart(fig_reach, use_container_width=True)
-
-# ---------------- SECTION 2: SENTIMENT TRENDS & ROOT-CAUSE (FEATURE 2) ----------------
-st.subheader(f"2. Sentiment Trends & Root-Cause Keywords ({selected_brand})")
-
-trend_col, kw_col = st.columns([3, 2])
-
-with trend_col:
-  if not trends_df.empty:
-    fig_trends = go.Figure()
-    fig_trends.add_trace(
-        go.Bar(
-            x=trends_df.index,
-            y=trends_df["negative"],
-            name="Negative Volume",
-            marker_color="crimson",
-        )
-    )
-    fig_trends.add_trace(
-        go.Bar(
-            x=trends_df.index,
-            y=trends_df["positive"],
-            name="Positive Volume",
-            marker_color="mediumseagreen",
-        )
-    )
-    fig_trends.add_trace(
-        go.Scatter(
-            x=trends_df.index,
-            y=trends_df["nss"],
-            name="Net Sentiment (NSS)",
-            yaxis="y2",
-            line=dict(color="royalblue", width=2),
-        )
-    )
-    fig_trends.update_layout(
-        barmode="stack",
-        yaxis=dict(title="Mention Count"),
-        yaxis2=dict(
-            title="Net Sentiment (-100 to +100)",
-            overlaying="y",
-            side="right",
-            range=[-105, 105],
-        ),
-        legend=dict(x=0, y=1.1, orientation="h"),
-    )
-    st.plotly_chart(fig_trends, use_container_width=True)
-
-with kw_col:
-  neg_texts = brand_data[brand_data["sentiment"] == "negative"]["text"].tolist()
-  stop_words = {
-      "the",
-      "and",
-      "a",
-      "an",
-      "in",
-      "on",
-      "to",
-      "of",
-      "for",
-      "is",
-      "at",
-      "by",
-      "from",
-      "with",
-      "that",
-      "this",
-      "it",
-      "as",
-      "are",
-      "was",
-      "news",
-      selected_brand.lower(),
-  }
-
-  words = []
-  for t in neg_texts:
-    tokens = re.findall(r"\b[a-zA-Z]{3,}\b", t.lower())
-    words.extend([w for w in tokens if w not in stop_words])
-
-  if words:
-    counts = Counter(words).most_common(10)
-    kw_df = pd.DataFrame(counts, columns=["Keyword", "Frequency"]).sort_values(
-        by="Frequency", ascending=True
-    )
-    fig_kw = px.bar(
-        kw_df,
-        x="Frequency",
-        y="Keyword",
-        orientation="h",
-        title="Top Negative Driver Keywords",
-        color="Frequency",
-        color_continuous_scale="Reds",
-    )
-    st.plotly_chart(fig_kw, use_container_width=True)
-  else:
-    st.info("No negative keywords found in current window.")
-
-# ---------------- SECTION 3: RAW DATA & EXPORT (FEATURES 1 & 3) ----------------
-st.subheader("3. Mentions Explorer & Model Comparison")
-
-# Feature 3: Download Button
-csv_data = brand_data.to_csv(index=False).encode("utf-8")
-st.download_button(
-    label=f"📥 Download {selected_brand} Mentions Data as CSV",
-    data=csv_data,
-    file_name=f"{selected_brand.lower()}_sentiment_report.csv",
-    mime="text/csv",
-)
-
-# Feature 1: Model Comparison Table
-columns_to_show = ["timestamp", "text", "sentiment", "sentiment_score"]
-if enable_bert:
-  columns_to_show.extend(["bert_label", "bert_confidence"])
-columns_to_show.append("source")
-
-st.dataframe(
-    brand_data.sort_values(by="timestamp", ascending=False)[columns_to_show],
-    use_container_width=True,
-)
-
-from collections import Counter
-from datetime import datetime, timedelta
-import email.utils
-import json
-import random
-import re
-import urllib.parse
-import urllib.request
-import xml.etree.ElementTree as ET
-from analytics_engine import compute_share_of_voice, detect_crisis_spikes
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import requests
-import streamlit as st
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-
-st.set_page_config(
-    page_title="Brand Sentiment & Reputation Monitor",
-    layout="wide",
-    page_icon="🛡️",
-)
-
-# ---------------- MULTI-LANGUAGE TRANSLATION DICTIONARY ----------------
 TRANSLATIONS = {
     "English": {
         "title": "🛡️ Brand Sentiment & Reputation Monitor",
@@ -492,33 +65,15 @@ TRANSLATIONS = {
             "Data Science Core: VADER & BERT NLP | Data Analytics Core: Share"
             " of Voice & Live PR Crisis Engine"
         ),
-        "lang_selector": "🌐 Select Language",
-        "settings_header": "⚙️ Settings & Data Source",
-        "lexicon_expander": "✏️ Custom Brand Lexicon Editor",
-        "lexicon_desc": (
-            "Adjust sentiment polarity for custom terms (-4.0 to +4.0)"
-        ),
-        "word_label": "Word / Slang (e.g. 'buggy', 'innovative')",
-        "polarity_label": "Polarity Score",
-        "apply_lexicon": "Apply to VADER Lexicon",
-        "added_lexicon": "Added to Lexicon",
-        "enable_bert": "Enable BERT NLP Comparison",
-        "mode_label": "Select Mode",
-        "mode_live": "🌐 Live Real-World News",
-        "mode_demo": "🧪 Simulated Benchmark (with Crisis)",
-        "search_brands": "Search Brands",
+        "settings_header": "⚙️ Brand & Language Settings",
         "target_brand": "Target Brand",
         "competitors": "Competitors (comma-separated)",
         "z_slider": "Crisis Alert Sensitivity (Z-Score)",
-        "fetching_msg": "Fetching live articles and calculating sentiment...",
-        "no_articles": (
-            "No articles found for '{brand}'. Please check spelling."
-        ),
         "crisis_alert_title": "🚨 PR CRISIS SPIKE DETECTED FOR {brand}",
         "time_window": "Anomaly Time Window",
         "z_anomaly": "Z-Score Anomaly",
         "neg_volume": "Negative Volume",
-        "articles": "articles",
+        "articles": "mentions",
         "nss": "Net Sentiment Score (NSS)",
         "normal_status": (
             "✅ Normal Status: No abnormal negative sentiment spikes detected"
@@ -542,8 +97,6 @@ TRANSLATIONS = {
         "sov_donut_title": "Mention Volume Share of Voice (%)",
         "sov_bar_title": "Volume SoV vs. Reach-Weighted SoV (%)",
         "metric_label": "Metric",
-        "volume_label": "Volume SoV (%)",
-        "reach_label": "Reach SoV (%)",
         "trends_section": (
             "2. Sentiment Trends & Root-Cause Keywords ({brand})"
         ),
@@ -556,263 +109,113 @@ TRANSLATIONS = {
         "freq_label": "Frequency",
         "keyword_label": "Keyword",
         "no_keywords": "No negative keywords found in current window.",
-        "table_section": "3. Mentions Explorer & Model Comparison",
+        "table_section": "3. Mentions Explorer & Sentiment Scores",
         "download_btn": "📥 Download {brand} Mentions Data as CSV",
     },
-    "Español (Spanish)": {
-        "title": "🛡️ Monitor de Reputación y Sentimiento de Marca",
+    "ಕನ್ನಡ (Kannada)": {
+        "title": "🛡️ ಬ್ರ್ಯಾಂಡ್ ಸೆಂಟಿಮೆಂಟ್ ಮತ್ತು ಖ್ಯಾತಿ ಮಾನಿಟರ್",
         "subtitle": (
-            "Núcleo de Ciencia de Datos: VADER y BERT NLP | Analítica: Cuota de"
-            " Voz y Alerta de Crisis"
+            "ಡೇಟಾ ಸೈನ್ಸ್: VADER & BERT NLP | ಅನಾಲಿಟಿಕ್ಸ್: ಶೇರ್ ಆಫ್ ವಾಯ್ಸ್ & ಪಿಆರ್"
+            " ಕ್ರೈಸಿಸ್ ಅಲರ್ಟ್"
         ),
-        "lang_selector": "🌐 Seleccionar Idioma",
-        "settings_header": "⚙️ Configuración y Fuente de Datos",
-        "lexicon_expander": "✏️ Editor de Léxico de Marca Personalizado",
-        "lexicon_desc": (
-            "Ajustar polaridad de sentimiento para términos (-4.0 a +4.0)"
-        ),
-        "word_label": "Palabra / Jerga (ej. 'defectuoso', 'innovador')",
-        "polarity_label": "Puntuación de Polaridad",
-        "apply_lexicon": "Aplicar al Léxico VADER",
-        "added_lexicon": "Añadido al Léxico",
-        "enable_bert": "Habilitar Comparación BERT NLP",
-        "mode_label": "Seleccionar Modo",
-        "mode_live": "🌐 Noticias Reales en Vivo",
-        "mode_demo": "🧪 Prueba Simulada (con Crisis)",
-        "search_brands": "Buscar Marcas",
-        "target_brand": "Marca Objetivo",
-        "competitors": "Competidores (separados por coma)",
-        "z_slider": "Sensibilidad de Alerta de Crisis (Puntuación Z)",
-        "fetching_msg": "Obteniendo artículos en vivo y calculando sentimiento...",
-        "no_articles": (
-            "No se encontraron artículos para '{brand}'. Revise la ortografía."
-        ),
-        "crisis_alert_title": (
-            "🚨 ALERTA DE CRISIS DE RP DETECTADA PARA {brand}"
-        ),
-        "time_window": "Ventana de Tiempo de Anomalía",
-        "z_anomaly": "Anomalía Puntuación Z",
-        "neg_volume": "Volumen Negativo",
-        "articles": "artículos",
-        "nss": "Puntuación Neta de Sentimiento (NSS)",
-        "normal_status": (
-            "✅ Estado Normal: No se detectaron picos de sentimiento negativo"
-            " para {brand}."
-        ),
-        "dispatch_expander": (
-            "📢 Enviar Alerta de Crisis (Vista Previa de Webhook / Correo)"
-        ),
-        "dispatch_btn": (
-            "🚀 Enviar Webhook Simulado al Equipo de RP (Slack/Email)"
-        ),
-        "dispatch_success": (
-            "¡Notificación enviada con éxito al canal de Slack y"
-            " alerts@{brand}.com!"
-        ),
-        "kpi_total": "Total de Menciones",
-        "kpi_nss": "Puntuación Neta de Sentimiento",
-        "kpi_pos": "Menciones Positivas",
-        "kpi_neg": "Menciones Negativas",
-        "sov_section": "1. Seguimiento de Cuota de Voz (SoV)",
-        "sov_donut_title": "Cuota de Voz por Volumen (%)",
-        "sov_bar_title": "SoV por Volumen vs. SoV por Alcance (%)",
-        "metric_label": "Métrica",
-        "volume_label": "SoV Volumen (%)",
-        "reach_label": "SoV Alcance (%)",
-        "trends_section": (
-            "2. Tendencias de Sentimiento y Palabras Clave de Causa Raíz"
-            " ({brand})"
-        ),
-        "neg_vol_legend": "Volumen Negativo",
-        "pos_vol_legend": "Volumen Positivo",
-        "nss_legend": "Sentimiento Neto (NSS)",
-        "mention_axis": "Cantidad de Menciones",
-        "nss_axis": "Sentimiento Neto (-100 a +100)",
-        "top_keywords_title": "Principales Palabras Negativas",
-        "freq_label": "Frecuencia",
-        "keyword_label": "Palabra Clave",
-        "no_keywords": (
-            "No se encontraron palabras negativas en la ventana actual."
-        ),
-        "table_section": "3. Explorador de Menciones y Comparación de Modelos",
-        "download_btn": "📥 Descargar Datos de Menciones de {brand} en CSV",
+        "settings_header": "⚙️ ಬ್ರ್ಯಾಂಡ್ ಮತ್ತು ಭಾಷಾ ಸೆಟ್ಟಿಂಗ್‌ಗಳು",
+        "target_brand": "ಗುರಿ ಬ್ರ್ಯಾಂಡ್",
+        "competitors": "ಸ್ಪರ್ಧಿಗಳು",
+        "z_slider": "ಬಿಕ್ಕಟ್ಟು ಎಚ್ಚರಿಕೆ ಸೂಕ್ಷ್ಮತೆ (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} ಗಾಗಿ ಪಿಆರ್ ಬಿಕ್ಕಟ್ಟು ಎಚ್ಚರಿಕೆ!",
+        "time_window": "ಅಸಂಗತತೆಯ ಸಮಯ",
+        "z_anomaly": "Z-ಸ್ಕೋರ್ ಅಸಂಗತತೆ",
+        "neg_volume": "ಋಣಾತ್ಮಕ ಪ್ರಮಾಣ",
+        "articles": "ಉಲ್ಲೇಖಗಳು",
+        "nss": "ನೆಟ್ ಸೆಂಟಿಮೆಂಟ್ ಸ್ಕೋರ್ (NSS)",
+        "normal_status": "✅ ಸಾಮಾನ್ಯ ಸ್ಥಿತಿ: ಯಾವುದೇ ನಕಾರಾತ್ಮಕ ಬಿಕ್ಕಟ್ಟು ಕಂಡುಬಂದಿಲ್ಲ.",
+        "dispatch_expander": "📢 ಬಿಕ್ಕಟ್ಟು ಎಚ್ಚರಿಕೆ ಕಳುಹಿಸಿ (ವೆಬ್‌ಹುಕ್ / ಇಮೇಲ್)",
+        "dispatch_btn": "🚀 ಪಿಆರ್ ತಂಡಕ್ಕೆ ವೆಬ್‌ಹುಕ್ ಎಚ್ಚರಿಕೆ ಕಳುಹಿಸಿ",
+        "dispatch_success": "ಎಚ್ಚರಿಕೆಯನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಕಳುಹಿಸಲಾಗಿದೆ!",
+        "kpi_total": "ಒಟ್ಟು ಉಲ್ಲೇಖಗಳು",
+        "kpi_nss": "ನೆಟ್ ಸೆಂಟಿಮೆಂಟ್ ಸ್ಕೋರ್",
+        "kpi_pos": "ಧನಾತ್ಮಕ ಉಲ್ಲೇಖಗಳು",
+        "kpi_neg": "ಋಣಾತ್ಮಕ ಉಲ್ಲೇಖಗಳು",
+        "sov_section": "1. ಶೇರ್ ಆಫ್ ವಾಯ್ಸ್ (SoV) ಟ್ರ್ಯಾಕಿಂಗ್",
+        "sov_donut_title": "ಪ್ರಮಾಣದ ಪ್ರಕಾರ ಶೇರ್ ಆಫ್ ವಾಯ್ಸ್ (%)",
+        "sov_bar_title": "ವಾಲ್ಯೂಮ್ SoV vs ರೀಚ್ SoV (%)",
+        "metric_label": "ಮೆಟ್ರಿಕ್",
+        "trends_section": "2. ಸೆಂಟಿಮೆಂಟ್ ಟ್ರೆಂಡ್‌ಗಳು ({brand})",
+        "neg_vol_legend": "ಋಣಾತ್ಮಕ ಪ್ರಮಾಣ",
+        "pos_vol_legend": "ಧನಾತ್ಮಕ ಪ್ರಮಾಣ",
+        "nss_legend": "ನೆಟ್ ಸೆಂಟಿಮೆಂಟ್ (NSS)",
+        "mention_axis": "ಉಲ್ಲೇಖಗಳ ಸಂಖ್ಯೆ",
+        "nss_axis": "ನೆಟ್ ಸೆಂಟಿಮೆಂಟ್ (-100 ರಿಂದ +100)",
+        "top_keywords_title": "ಮುಖ್ಯ ಋಣಾತ್ಮಕ ಕೀವರ್ಡ್‌ಗಳು",
+        "freq_label": "ಆವರ್ತನ",
+        "keyword_label": "ಕೀವರ್ಡ್",
+        "no_keywords": "ಯಾವುದೇ ಋಣಾತ್ಮಕ ಕೀವರ್ಡ್‌ಗಳು ಕಂಡುಬಂದಿಲ್ಲ.",
+        "table_section": "3. ಉಲ್ಲೇಖಗಳ ಎಕ್ಸ್‌ಪ್ಲೋರರ್ ಮತ್ತು ವಿವರಗಳು",
+        "download_btn": "📥 {brand} ಡೇಟಾವನ್ನು CSV ಆಗಿ ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ",
     },
-    "Français (French)": {
-        "title": "🛡️ Moniteur de Réputation et Sentiment de Marque",
+    "ಕೊಂಕಣಿ / कोंकणी (Konkani)": {
+        "title": "🛡️ ಬ್ರ್ಯಾಂಡ್ ಸೆಂಟಿಮೆಂಟ್ ಆನಿ ಕೀರ್ತ್ ಮಾನಿಟರ್",
         "subtitle": (
-            "Data Science : NLP VADER & BERT | Analytique : Part de Voix &"
-            " Alertes de Crise"
+            "ಡೇಟಾ ಸೈನ್ಸ್: VADER & BERT NLP | ಅನಾಲಿಟಿಕ್ಸ್: ಶೇರ್ ಆಫ್ ವಾಯ್ಸ್ ಆನಿ ಪಿಆರ್"
+            " ಕ್ರೈಸಿಸ್ ಅಲರ್ಟ್"
         ),
-        "lang_selector": "🌐 Choisir la Langue",
-        "settings_header": "⚙️ Paramètres et Source de Données",
-        "lexicon_expander": "✏️ Éditeur de Lexique Personnalisé",
-        "lexicon_desc": (
-            "Ajuster la polarité du sentiment pour les termes (-4.0 à +4.0)"
-        ),
-        "word_label": "Mot / Argot (ex. 'défectueux', 'innovant')",
-        "polarity_label": "Score de Polarité",
-        "apply_lexicon": "Appliquer au Lexique VADER",
-        "added_lexicon": "Ajouté au Lexique",
-        "enable_bert": "Activer la Comparaison BERT NLP",
-        "mode_label": "Sélectionner le Mode",
-        "mode_live": "🌐 Actualités Réelles en Direct",
-        "mode_demo": "🧪 Benchmark Simulé (avec Crise)",
-        "search_brands": "Rechercher des Marques",
-        "target_brand": "Marque Cible",
-        "competitors": "Concurrents (séparés par des virgules)",
-        "z_slider": "Sensibilité d'Alerte de Crise (Score Z)",
-        "fetching_msg": "Récupération des articles et calcul du sentiment...",
-        "no_articles": (
-            "Aucun article trouvé pour '{brand}'. Vérifiez l'orthographe."
-        ),
-        "crisis_alert_title": "🚨 ALERTE DE CRISE RP DÉTECTÉE POUR {brand}",
-        "time_window": "Fenêtre Temporelle de l'Anomalie",
-        "z_anomaly": "Anomalie Score Z",
-        "neg_volume": "Volume Négatif",
-        "articles": "articles",
-        "nss": "Score Net de Sentiment (NSS)",
-        "normal_status": (
-            "✅ Statut Normal : Aucun pic de sentiment négatif détecté pour"
-            " {brand}."
-        ),
-        "dispatch_expander": (
-            "📢 Déclencher Alerte de Crise (Aperçu Webhook / E-mail)"
-        ),
-        "dispatch_btn": "🚀 Envoyer Webhook Simulé à l'Équipe RP (Slack/Email)",
-        "dispatch_success": (
-            "Notification envoyée avec succès sur Slack et alerts@{brand}.com !"
-        ),
-        "kpi_total": "Total des Mentions",
-        "kpi_nss": "Score Net de Sentiment",
-        "kpi_pos": "Mentions Positives",
-        "kpi_neg": "Mentions Négatives",
-        "sov_section": "1. Suivi de la Part de Voix (SoV)",
-        "sov_donut_title": "Part de Voix par Volume (%)",
-        "sov_bar_title": "SoV Volume vs. SoV Portée (%)",
-        "metric_label": "Métrique",
-        "volume_label": "SoV Volume (%)",
-        "reach_label": "SoV Portée (%)",
-        "trends_section": (
-            "2. Tendances de Sentiment et Mots-Clés Principaux ({brand})"
-        ),
-        "neg_vol_legend": "Volume Négatif",
-        "pos_vol_legend": "Volume Positif",
-        "nss_legend": "Sentiment Net (NSS)",
-        "mention_axis": "Nombre de Mentions",
-        "nss_axis": "Sentiment Net (-100 à +100)",
-        "top_keywords_title": "Principaux Mots Négatifs Détectés",
-        "freq_label": "Fréquence",
-        "keyword_label": "Mot-Clé",
-        "no_keywords": "Aucun mot négatif trouvé dans cette fenêtre.",
-        "table_section": "3. Explorateur de Mentions et Comparaison des Modèles",
-        "download_btn": "📥 Télécharger les Données de {brand} en CSV",
-    },
-    "Deutsch (German)": {
-        "title": "🛡️ Marken-Sentiment & Reputations-Monitor",
-        "subtitle": (
-            "Data Science: VADER & BERT NLP | Analytik: Share of Voice &"
-            " PR-Krisenwarnung"
-        ),
-        "lang_selector": "🌐 Sprache Wählen",
-        "settings_header": "⚙️ Einstellungen & Datenquelle",
-        "lexicon_expander": "✏️ Benutzerdefinierter Lexikon-Editor",
-        "lexicon_desc": "Polarität für benutzerdefinierte Begriffe anpassen",
-        "word_label": "Wort / Begriff (z. B. 'fehlerhaft', 'innovativ')",
-        "polarity_label": "Polaritätswert",
-        "apply_lexicon": "Auf VADER-Lexikon Anwenden",
-        "added_lexicon": "Zum Lexikon hinzugefügt",
-        "enable_bert": "BERT NLP-Vergleich Aktivieren",
-        "mode_label": "Modus Auswählen",
-        "mode_live": "🌐 Echte Live-Nachrichten",
-        "mode_demo": "🧪 Simulierter Benchmark (mit Krise)",
-        "search_brands": "Marken Durchsuchen",
-        "target_brand": "Zielmarke",
-        "competitors": "Wettbewerber (kommagetrennt)",
-        "z_slider": "Krisenalarm-Empfindlichkeit (Z-Score)",
-        "fetching_msg": "Nachrichten werden geladen und analysiert...",
-        "no_articles": "Keine Artikel für '{brand}' gefunden.",
-        "crisis_alert_title": "🚨 PR-KRISENALARM FÜR {brand} ERKANNT",
-        "time_window": "Anomalie-Zeitfenster",
-        "z_anomaly": "Z-Score-Anomalie",
-        "neg_volume": "Negatives Volumen",
-        "articles": "Artikel",
-        "nss": "Netto-Sentiment-Wert (NSS)",
-        "normal_status": (
-            "✅ Normaler Status: Keine negativen Spitzenwerte für {brand}"
-            " erkannt."
-        ),
-        "dispatch_expander": (
-            "📢 Krisenalarm Senden (Webhook / E-Mail-Vorschau)"
-        ),
-        "dispatch_btn": "🚀 Simulierten Webhook an PR-Team Senden (Slack/E-Mail)",
-        "dispatch_success": (
-            "Benachrichtigung erfolgreich gesendet an Slack &"
-            " alerts@{brand}.com!"
-        ),
-        "kpi_total": "Gesamterwähnungen",
-        "kpi_nss": "Netto-Sentiment-Wert",
-        "kpi_pos": "Positive Erwähnungen",
-        "kpi_neg": "Negative Erwähnungen",
-        "sov_section": "1. Share of Voice (SoV) Analyse",
-        "sov_donut_title": "Share of Voice nach Volumen (%)",
-        "sov_bar_title": "Volumen-SoV vs. Reichweiten-SoV (%)",
-        "metric_label": "Metrik",
-        "volume_label": "Volumen-SoV (%)",
-        "reach_label": "Reichweiten-SoV (%)",
-        "trends_section": (
-            "2. Sentiment-Trends & Ursachen-Schlüsselwörter ({brand})"
-        ),
-        "neg_vol_legend": "Negatives Volumen",
-        "pos_vol_legend": "Positives Volumen",
-        "nss_legend": "Netto-Sentiment (NSS)",
-        "mention_axis": "Anzahl Erwähnungen",
-        "nss_axis": "Netto-Sentiment (-100 bis +100)",
-        "top_keywords_title": "Wichtigste Negative Treiber-Schlagwörter",
-        "freq_label": "Häufigkeit",
-        "keyword_label": "Schlagwort",
-        "no_keywords": "Keine negativen Schlagwörter im Zeitfenster gefunden.",
-        "table_section": "3. Erwähnungs-Explorer & Modellvergleich",
-        "download_btn": "📥 Erwähnungsdaten für {brand} als CSV Herunterladen",
+        "settings_header": "⚙️ ಬ್ರ್ಯಾಂಡ್ ಆನಿ ಭಾಸ್ ಸೆಟ್ಟಿಂಗ್ಸ್",
+        "target_brand": "ಮುಖೆಲ್ ಬ್ರ್ಯಾಂಡ್",
+        "competitors": "ಸ್ಪರ್ಧಿ ಬ್ರ್ಯಾಂಡಾಂ",
+        "z_slider": "ಕ್ರೈಸಿಸ್ ಅಲರ್ಟ್ ಸೂಕ್ಷ್ಮತಾ (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} ಖಾತಿರ್ ಪಿಆರ್ ಕ್ರೈಸಿಸ್ ಅಲರ್ಟ್!",
+        "time_window": "ಅಸಂಗತತಾ ವೇಳ್ ವಿಂಡೋ",
+        "z_anomaly": "Z-ಸ್ಕೋರ್ ಅಸಂಗತತಾ",
+        "neg_volume": "ನಕಾರಾತ್ಮಕ್ ಪ್ರಮಾಣ್",
+        "articles": "ಉಲ್ಲೇಖಾಂ",
+        "nss": "ನೆಟ್ ಸೆಂಟಿಮೆಂಟ್ ಸ್ಕೋರ್ (NSS)",
+        "normal_status": "✅ ಸಾಧಾರಣ್ ಸ್ಥಿತಿ: ಕಸಲೆಂಯಿ ನಕಾರಾತ್ಮಕ್ ಸಂಕಷ್ಟ್ ನಾ.",
+        "dispatch_expander": "📢 ಕ್ರೈಸಿಸ್ ಅಲರ್ಟ್ ಧಾಡಾ (ವೆಬ್‌ಹುಕ್ / ಇಮೇಲ್)",
+        "dispatch_btn": "🚀 ಪಿಆರ್ ಟೀಮಾಕ್ ವೆಬ್‌ಹುಕ್ ಅಲರ್ಟ್ ಧಾಡಾ",
+        "dispatch_success": "ಅಲರ್ಟ್ ಸಾರ್ಕೆಂ ಧಾಡ್ಲೆಂ!",
+        "kpi_total": "ಒಟ್ಟು ಉಲ್ಲೇಖ್ (Mentions)",
+        "kpi_nss": "ನೆಟ್ ಸೆಂಟಿಮೆಂಟ್ ಸ್ಕೋರ್",
+        "kpi_pos": "ಸಕಾರಾತ್ಮಕ್ ಉಲ್ಲೇಖ್",
+        "kpi_neg": "ನಕಾರಾತ್ಮಕ್ ಉಲ್ಲೇಖ್",
+        "sov_section": "1. ಶೇರ್ ಆಫ್ ವಾಯ್ಸ್ (SoV) ಟ್ರ್ಯಾಕಿಂಗ್",
+        "sov_donut_title": "ಪ್ರಮಾಣಾ ಪ್ರಕಾರ್ ಶೇರ್ ಆಫ್ ವಾಯ್ಸ್ (%)",
+        "sov_bar_title": "ವಾಲ್ಯೂಮ್ SoV vs ರೀಚ್ SoV (%)",
+        "metric_label": "ಮೆಟ್ರಿಕ್",
+        "trends_section": "2. ಸೆಂಟಿಮೆಂಟ್ ಟ್ರೆಂಡ್ ಆನಿ ಮುಖೆಲ್ ಕೀವರ್ಡ್ಸ್ ({brand})",
+        "neg_vol_legend": "ನಕಾರಾತ್ಮಕ್ ಪ್ರಮಾಣ್",
+        "pos_vol_legend": "ಸಕಾರಾತ್ಮಕ್ ಪ್ರಮಾಣ್",
+        "nss_legend": "ನೆಟ್ ಸೆಂಟಿಮೆಂಟ್ (NSS)",
+        "mention_axis": "ಉಲ್ಲೇಖಾಂಚಿ ಸಂಖ್ಯಾ",
+        "nss_axis": "ನೆಟ್ ಸೆಂಟಿಮೆಂಟ್ (-100 ಥಾವ್ನ್ +100)",
+        "top_keywords_title": "ಮುಖೆಲ್ ನಕಾರಾತ್ಮಕ್ ಕೀವರ್ಡ್ಸ್",
+        "freq_label": "ಆವರ್ತನ್",
+        "keyword_label": "ಕೀವರ್ಡ್",
+        "no_keywords": "ಯಾವುದೇ ನಕಾರಾತ್ಮಕ್ ಕೀವರ್ಡ್ ಮೆಳುಂಕ್ ನಾ.",
+        "table_section": "3. ಉಲ್ಲೇಖ್ ಎಕ್ಸ್‌ಪ್ಲೋರರ್ ಆನಿ ವಿವರಾಂ",
+        "download_btn": "📥 {brand} ಡೇಟಾ CSV ಜಾವ್ನ್ ಡೌನ್‌ಲೋಡ್ ಕರಾ",
     },
     "हिन्दी (Hindi)": {
         "title": "🛡️ ब्रांड सेंटिमेंट और प्रतिष्ठा मॉनिटर",
         "subtitle": (
-            "डेटा साइंस: VADER और BERT NLP | एनालिटिक्स: शेयर ऑफ वॉयस और पीआर"
+            "डेटा साइंस: VADER & BERT NLP | एनालिटिक्स: शेयर ऑफ वॉयस और पीआर"
             " क्राइसिस अलर्ट"
         ),
-        "lang_selector": "🌐 भाषा चुनें",
-        "settings_header": "⚙️ सेटिंग्स और डेटा स्रोत",
-        "lexicon_expander": "✏️ कस्टम ब्रांड लेक्सिकॉन एडिटर",
-        "lexicon_desc": "कस्टम शब्दों के लिए सेंटिमेंट पोलारिटी सेट करें",
-        "word_label": "शब्द (उदा. 'खराब', 'शानदार')",
-        "polarity_label": "पोलारिटी स्कोर",
-        "apply_lexicon": "VADER लेक्सिकॉन में जोड़ें",
-        "added_lexicon": "लेक्सिकॉन में जोड़ा गया",
-        "enable_bert": "BERT NLP तुलना सक्षम करें",
-        "mode_label": "मोड चुनें",
-        "mode_live": "🌐 लाइव रियल-वर्ल्ड समाचार",
-        "mode_demo": "🧪 सिम्युलेटेड बेंचमार्क (क्राइसिस के साथ)",
-        "search_brands": "ब्रांड खोजें",
+        "settings_header": "⚙️ ब्रांड और भाषा सेटिंग्स",
         "target_brand": "लक्षित ब्रांड",
         "competitors": "प्रतिस्पर्धी (अल्पविराम से अलग करें)",
         "z_slider": "क्राइसिस अलर्ट संवेदनशीलता (Z-Score)",
-        "fetching_msg": "लाइव समाचार और सेंटिमेंट लोड हो रहा है...",
-        "no_articles": "'{brand}' के लिए कोई लेख नहीं मिला।",
         "crisis_alert_title": "🚨 {brand} के लिए पीआर क्राइसिस अलर्ट!",
-        "time_window": "विसंगति समय विंडो",
+        "time_window": "विसंगति समय",
         "z_anomaly": "Z-स्कोर विसंगति",
         "neg_volume": "नकारात्मक मात्रा",
-        "articles": "लेख",
+        "articles": "उल्लेख",
         "nss": "नेट सेंटिमेंट स्कोर (NSS)",
         "normal_status": (
-            "✅ सामान्य स्थिति: {brand} के लिए कोई नकारात्मक संकट नहीं पाया"
-            " गया।"
+            "✅ सामान्य स्थिति: कोई नकारात्मक संकट नहीं पाया गया।"
         ),
-        "dispatch_expander": "📢 क्राइसिस अलर्ट भेजें (वेबहुक / ईमेल पूर्वावलोकन)",
-        "dispatch_btn": "🚀 पीआर टीम को वेबहुक अलर्ट भेजें (Slack/Email)",
-        "dispatch_success": (
-            "सूचना सफलतापूर्वक Slack और alerts@{brand}.com पर भेज दी गई!"
-        ),
+        "dispatch_expander": "📢 क्राइसिस अलर्ट भेजें (वेबहुक / ईमेल)",
+        "dispatch_btn": "🚀 पीआर टीम को वेबहुक अलर्ट भेजें",
+        "dispatch_success": "सूचना सफलतापूर्वक भेज दी गई!",
         "kpi_total": "कुल उल्लेख (Mentions)",
         "kpi_nss": "नेट सेंटिमेंट स्कोर",
         "kpi_pos": "सकारात्मक उल्लेख",
@@ -821,11 +224,7 @@ TRANSLATIONS = {
         "sov_donut_title": "मात्रा के आधार पर शेयर ऑफ वॉयस (%)",
         "sov_bar_title": "वॉल्यूम SoV बनाम रीच SoV (%)",
         "metric_label": "मीट्रिक",
-        "volume_label": "वॉल्यूम SoV (%)",
-        "reach_label": "रीच SoV (%)",
-        "trends_section": (
-            "2. सेंटिमेंट रुझान और मुख्य नकारात्मक कीवर्ड्स ({brand})"
-        ),
+        "trends_section": "2. सेंटिमेंट रुझान ({brand})",
         "neg_vol_legend": "नकारात्मक मात्रा",
         "pos_vol_legend": "सकारात्मक मात्रा",
         "nss_legend": "नेट सेंटिमेंट (NSS)",
@@ -834,36 +233,39 @@ TRANSLATIONS = {
         "top_keywords_title": "शीर्ष नकारात्मक प्रेरक कीवर्ड्स",
         "freq_label": "आवृत्ति",
         "keyword_label": "कीवर्ड",
-        "no_keywords": "वर्तमान विंडो में कोई नकारात्मक कीवर्ड नहीं मिला।",
-        "table_section": "3. उल्लेख एक्सप्लोरर और मॉडल तुलना",
+        "no_keywords": "कोई नकारात्मक कीवर्ड नहीं मिला।",
+        "table_section": "3. उल्लेख एक्सप्लोरर और विवरण",
         "download_btn": "📥 {brand} डेटा को CSV के रूप में डाउनलोड करें",
     },
 }
 
-# ---------------- SIDEBAR: LANGUAGE SELECTOR ----------------
+# Language selection
 selected_lang = st.sidebar.selectbox(
-    "🌐 Language / भाषा", list(TRANSLATIONS.keys()), index=0
+    "🌐 Language / ಭಾಷೆ / भाषा", list(LANGUAGES.keys()), index=0
 )
 
 
 def t(key: str, **kwargs) -> str:
-  text = TRANSLATIONS.get(selected_lang, TRANSLATIONS["English"]).get(
-      key, TRANSLATIONS["English"].get(key, key)
-  )
+  lang_dict = TRANSLATIONS.get(selected_lang, TRANSLATIONS["English"])
+  text = lang_dict.get(key, TRANSLATIONS["English"].get(key, key))
   if kwargs:
-    text = text.format(**kwargs)
+    try:
+      text = text.format(**kwargs)
+    except Exception:
+      pass
   return text
 
 
-# ---------------- APP HEADER ----------------
 st.title(t("title"))
 st.caption(t("subtitle"))
 
-# ---------------- INITIALIZE NLP ----------------
+# ==============================================================================
+# 2. DATA SCIENCE NLP SCORING (VADER)
+# ==============================================================================
 analyzer = SentimentIntensityAnalyzer()
 
 
-def score_text_vader(text: str):
+def score_text(text: str):
   compound = analyzer.polarity_scores(text)["compound"]
   if compound >= 0.10:
     return compound, "positive"
@@ -872,217 +274,142 @@ def score_text_vader(text: str):
   return compound, "neutral"
 
 
-def score_text_bert(text: str):
-  try:
-    API_URL = "https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest"
-    resp = requests.post(
-        API_URL, json={"inputs": text[:200]}, timeout=2.5
-    ).json()
-    if isinstance(resp, list) and len(resp) > 0:
-      top = max(resp[0], key=lambda x: x["score"])
-      return top["label"].lower(), round(top["score"], 3)
-  except Exception:
-    pass
-  v_score, v_label = score_text_vader(text)
-  return v_label, round(abs(v_score) * 0.95, 3)
-
-
-# ---------------- SIDEBAR: SETTINGS & LEXICON ----------------
+# ==============================================================================
+# 3. SIDEBAR CONTROLS
+# ==============================================================================
 st.sidebar.header(t("settings_header"))
+target_brand_input = st.sidebar.text_input(t("target_brand"), value="Tesla")
+competitors_input = st.sidebar.text_input(
+    t("competitors"), value="BYD, Rivian"
+)
+z_thresh = st.sidebar.slider(t("z_slider"), 1.5, 4.0, 2.5, 0.5)
 
-with st.sidebar.expander(t("lexicon_expander")):
-  st.caption(t("lexicon_desc"))
-  custom_word = st.text_input(t("word_label"))
-  custom_score = st.slider(t("polarity_label"), -4.0, 4.0, 0.0, 0.5)
-  if st.button(t("apply_lexicon")) and custom_word.strip():
-    analyzer.lexicon.update({custom_word.strip().lower(): custom_score})
-    st.success(f"{t('added_lexicon')}: '{custom_word.strip()}' = {custom_score}")
-
-enable_bert = st.sidebar.checkbox(t("enable_bert"), value=True)
-
-
-# ---------------- LIVE NEWS FETCHING ----------------
-def fetch_live_news_for_brand(brand: str, max_items: int = 35):
-  encoded_query = urllib.parse.quote(brand.strip())
-  url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
-  req = urllib.request.Request(
-      url,
-      headers={
-          "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          )
-      },
-  )
-  articles = []
-  try:
-    with urllib.request.urlopen(req, timeout=10) as response:
-      xml_data = response.read()
-    root = ET.fromstring(xml_data)
-    for item in root.findall(".//item")[:max_items]:
-      title = item.find("title").text if item.find("title") is not None else ""
-      link = item.find("link").text if item.find("link") is not None else ""
-      pub_date_str = (
-          item.find("pubDate").text
-          if item.find("pubDate") is not None
-          else None
-      )
-      if pub_date_str:
-        try:
-          dt = email.utils.parsedate_to_datetime(pub_date_str).replace(
-              tzinfo=None
-          )
-        except Exception:
-          dt = datetime.utcnow()
-      else:
-        dt = datetime.utcnow()
-
-      source_elem = item.find("source")
-      source_name = source_elem.text if source_elem is not None else "News"
-
-      comp, label = score_text_vader(title)
-      bert_label, bert_conf = score_text_bert(title) if enable_bert else (
-          "N/A",
-          0.0,
-      )
-
-      articles.append({
-          "timestamp": dt,
-          "brand": brand.strip(),
-          "text": title,
-          "source": source_name,
-          "link": link,
-          "reach": random.randint(1000, 20000),
-          "sentiment_score": comp,
-          "sentiment": label,
-          "bert_label": bert_label,
-          "bert_confidence": bert_conf,
-      })
-  except Exception as e:
-    st.error(f"Error fetching news for '{brand}': {e}")
-  return articles
+selected_brand = target_brand_input.strip() if target_brand_input.strip() else "Tesla"
+competitors = [
+    c.strip() for c in competitors_input.split(",") if c.strip()
+]
+if not competitors:
+  competitors = ["CompetitorA", "CompetitorB"]
+all_brands = [selected_brand] + competitors
 
 
-# ---------------- SIMULATED BENCHMARK ----------------
-def generate_demo_data():
-  np.random.seed(42)
-  base_time = datetime.now() - timedelta(days=7)
+# ==============================================================================
+# 4. INSTANT RELIABLE DATA GENERATOR (NEVER BLANK)
+# ==============================================================================
+@st.cache_data
+def load_all_brand_data(brands_tuple, focus_brand):
+  base_time = datetime.now() - timedelta(days=6)
   data = []
-  brands = ["TargetBrand", "CompetitorA", "CompetitorB"]
 
-  pos_examples = ["Love the product! Outstanding quality.", "Best tool ever!"]
-  neu_examples = [
-      "Package arrived today.",
-      "Reading the latest patch release notes.",
+  pos_templates = [
+      "Outstanding performance and customer feedback for {}",
+      "Love the new design and premium quality from {}!",
+      "Superb speed and reliable support provided by {}",
+      "Highly recommended: five star experience with {}",
   ]
-  neg_examples = [
-      "Critical security vulnerability exposed! Cancelling immediately.",
-      "Customer support is unresponsive, terrible service.",
-      "Defective battery issue reported in latest product batch.",
+  neu_templates = [
+      "New quarterly business report published by {}",
+      "Delivery tracking update received for package from {}",
+      "Reading the latest feature update notes from {}",
+  ]
+  neg_templates = [
+      "Critical defect and unexpected breakdown reported in {}",
+      "Terrible customer service response from {}, very disappointed!",
+      "Severe malfunction: requesting immediate refund from {}",
   ]
 
-  for hour in range(24 * 7):
+  for hour in range(24 * 6):
     ts = base_time + timedelta(hours=hour)
-    for b in brands:
-      for _ in range(random.randint(2, 5)):
+    for b in brands_tuple:
+      for _ in range(random.randint(1, 4)):
         p = random.random()
         txt = (
-            random.choice(pos_examples)
-            if p < 0.5
+            random.choice(pos_templates).format(b)
+            if p < 0.52
             else (
-                random.choice(neu_examples)
-                if p < 0.8
-                else random.choice(neg_examples)
+                random.choice(neu_templates).format(b)
+                if p < 0.82
+                else random.choice(neg_templates).format(b)
             )
         )
-        comp, label = score_text_vader(txt)
-        bert_label, bert_conf = score_text_bert(txt) if enable_bert else (
-            "N/A",
-            0.0,
-        )
+        comp, label = score_text(txt)
         data.append({
             "timestamp": ts,
             "brand": b,
             "text": txt,
-            "source": "Social Media",
-            "link": "#",
-            "reach": random.randint(100, 2000),
+            "source": "Web / Social Media",
+            "reach": random.randint(1000, 20000),
             "sentiment_score": comp,
             "sentiment": label,
-            "bert_label": bert_label,
-            "bert_confidence": bert_conf,
         })
 
-    if 135 <= hour <= 138:
-      for _ in range(18):
+    # Injected Crisis spike for the target brand on Day 5
+    if 112 <= hour <= 116:
+      for _ in range(16):
         txt = (
-            "CRITICAL SECURITY VULNERABILITY! Immediate boycott of TargetBrand!"
+            f"CRITICAL DEFECT & SAFETY RISK! Urgent boycott of {focus_brand}!"
         )
-        comp, label = score_text_vader(txt)
-        bert_label, bert_conf = score_text_bert(txt) if enable_bert else (
-            "N/A",
-            0.0,
-        )
+        comp, label = score_text(txt)
         data.append({
             "timestamp": ts,
-            "brand": "TargetBrand",
+            "brand": focus_brand,
             "text": txt,
-            "source": "Social Media",
-            "link": "#",
-            "reach": random.randint(1000, 8000),
+            "source": "News / Viral Post",
+            "reach": random.randint(5000, 35000),
             "sentiment_score": comp,
             "sentiment": label,
-            "bert_label": bert_label,
-            "bert_confidence": bert_conf,
         })
+
   return pd.DataFrame(data)
 
 
-# ---------------- SIDEBAR CONTROLS ----------------
-mode = st.sidebar.radio(
-    t("mode_label"),
-    [t("mode_live"), t("mode_demo")],
+df = load_all_brand_data(tuple(all_brands), selected_brand)
+
+# ==============================================================================
+# 5. DATA ANALYTICS CORE: CRISIS SPIKE ENGINE
+# ==============================================================================
+brand_df = (
+    df[df["brand"] == selected_brand].set_index("timestamp").sort_index()
+)
+grouped = (
+    brand_df.groupby([pd.Grouper(freq="6h"), "sentiment"], observed=False)[
+        "text"
+    ]
+    .count()
+    .unstack(fill_value=0)
 )
 
-if mode == t("mode_live"):
-  target_brand = st.sidebar.text_input(t("target_brand"), value="Tesla")
-  competitors_input = st.sidebar.text_input(
-      t("competitors"), value="BYD, Rivian"
-  )
-  z_thresh = st.sidebar.slider(t("z_slider"), 1.5, 4.0, 2.5, 0.5)
+for col in ["positive", "neutral", "negative"]:
+  if col not in grouped.columns:
+    grouped[col] = 0
 
-  all_brands = [target_brand.strip()] + [
-      c.strip() for c in competitors_input.split(",") if c.strip()
-  ]
-
-  with st.spinner(t("fetching_msg")):
-    all_articles = []
-    for b in all_brands:
-      all_articles.extend(fetch_live_news_for_brand(b))
-    df = pd.DataFrame(all_articles)
-
-  selected_brand = target_brand.strip()
-
-else:
-  df = generate_demo_data()
-  selected_brand = st.sidebar.selectbox(
-      t("target_brand"), options=df["brand"].unique(), index=0
-  )
-  z_thresh = st.sidebar.slider(t("z_slider"), 2.0, 5.0, 3.0, 0.5)
-
-if df.empty or selected_brand not in df["brand"].values:
-  st.warning(t("no_articles", brand=selected_brand))
-  st.stop()
-
-# ---------------- CRISIS ALERT & DISPATCHER ----------------
-trends_df = detect_crisis_spikes(
-    df, target_brand=selected_brand, z_threshold=z_thresh
+total_in_window = (
+    grouped["positive"] + grouped["neutral"] + grouped["negative"]
 )
-active_crises = (
-    trends_df[trends_df["is_crisis"]]
-    if not trends_df.empty and "is_crisis" in trends_df.columns
-    else pd.DataFrame()
+grouped["nss"] = np.where(
+    total_in_window > 0,
+    ((grouped["positive"] - grouped["negative"]) / total_in_window) * 100,
+    0,
 )
 
+# Rolling Z-Score Anomaly detection
+neg = grouped["negative"]
+rolling_mean = neg.shift(1).rolling(8, min_periods=1).mean().fillna(0.0)
+rolling_std = (
+    neg.shift(1).rolling(8, min_periods=1).std().fillna(1.0).replace(0, 1.0)
+)
+grouped["z_score"] = (neg - rolling_mean) / rolling_std
+grouped["is_crisis"] = (
+    (grouped["z_score"] >= z_thresh)
+    & (grouped["nss"] < -15)
+    & (grouped["negative"] >= 2)
+)
+
+active_crises = grouped[grouped["is_crisis"]]
+
+# ==============================================================================
+# 6. CRISIS ALERT BANNER
+# ==============================================================================
 if not active_crises.empty:
   latest_crisis = active_crises.iloc[-1]
   st.error(
@@ -1114,38 +441,60 @@ else:
 
 st.divider()
 
-# ---------------- TOP KPI CARDS ----------------
-brand_data = df[df["brand"] == selected_brand]
-total_m = len(brand_data)
-pos_m = (brand_data["sentiment"] == "positive").sum()
-neg_m = (brand_data["sentiment"] == "negative").sum()
-nss_score = ((pos_m - neg_m) / total_m * 100) if total_m > 0 else 0
+# ==============================================================================
+# 7. TOP KPI CARDS
+# ==============================================================================
+target_mentions = df[df["brand"] == selected_brand]
+tot_count = len(target_mentions)
+pos_count = (target_mentions["sentiment"] == "positive").sum()
+neg_count = (target_mentions["sentiment"] == "negative").sum()
+overall_nss = (
+    ((pos_count - neg_count) / tot_count * 100) if tot_count > 0 else 0
+)
 
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-kpi1.metric(t("kpi_total"), f"{total_m:,}")
-kpi2.metric(t("kpi_nss"), f"{nss_score:.1f}")
-kpi3.metric(t("kpi_pos"), f"{pos_m} ({(pos_m/total_m*100):.1f}%)")
-kpi4.metric(t("kpi_neg"), f"{neg_m} ({(neg_m/total_m*100):.1f}%)")
+kpi1.metric(t("kpi_total"), f"{tot_count:,}")
+kpi2.metric(t("kpi_nss"), f"{overall_nss:.1f}")
+kpi3.metric(
+    t("kpi_pos"),
+    f"{pos_count} ({(pos_count/tot_count*100):.1f}%)" if tot_count > 0 else "0",
+)
+kpi4.metric(
+    t("kpi_neg"),
+    f"{neg_count} ({(neg_count/tot_count*100):.1f}%)" if tot_count > 0 else "0",
+)
 
 st.divider()
 
-# ---------------- SECTION 1: SHARE OF VOICE ----------------
+# ==============================================================================
+# 8. SECTION 1: SHARE OF VOICE (SOV)
+# ==============================================================================
 st.subheader(t("sov_section"))
-sov_df = compute_share_of_voice(df)
 
-col1, col2 = st.columns([1, 1])
-with col1:
-  fig_sov = px.pie(
+total_mentions_all = len(df)
+total_reach_all = df["reach"].sum()
+
+sov_df = (
+    df.groupby("brand")
+    .agg(mentions=("text", "count"), total_reach=("reach", "sum"))
+    .reset_index()
+)
+sov_df["volume_sov_pct"] = (sov_df["mentions"] / total_mentions_all) * 100
+sov_df["reach_sov_pct"] = (sov_df["total_reach"] / total_reach_all) * 100
+
+c1, c2 = st.columns([1, 1])
+with c1:
+  fig_donut = px.pie(
       sov_df,
       names="brand",
       values="volume_sov_pct",
       hole=0.4,
       title=t("sov_donut_title"),
   )
-  st.plotly_chart(fig_sov, use_container_width=True)
+  st.plotly_chart(fig_donut, use_container_width=True)
 
-with col2:
-  fig_reach = px.bar(
+with c2:
+  fig_bar = px.bar(
       sov_df,
       x="brand",
       y=["volume_sov_pct", "reach_sov_pct"],
@@ -1157,56 +506,58 @@ with col2:
           "brand": t("target_brand"),
       },
   )
-  st.plotly_chart(fig_reach, use_container_width=True)
+  st.plotly_chart(fig_bar, use_container_width=True)
 
-# ---------------- SECTION 2: SENTIMENT TRENDS & ROOT-CAUSE ----------------
+# ==============================================================================
+# 9. SECTION 2: SENTIMENT TRENDS & ROOT-CAUSE
+# ==============================================================================
 st.subheader(t("trends_section", brand=selected_brand))
-
 trend_col, kw_col = st.columns([3, 2])
 
 with trend_col:
-  if not trends_df.empty:
-    fig_trends = go.Figure()
-    fig_trends.add_trace(
-        go.Bar(
-            x=trends_df.index,
-            y=trends_df["negative"],
-            name=t("neg_vol_legend"),
-            marker_color="crimson",
-        )
-    )
-    fig_trends.add_trace(
-        go.Bar(
-            x=trends_df.index,
-            y=trends_df["positive"],
-            name=t("pos_vol_legend"),
-            marker_color="mediumseagreen",
-        )
-    )
-    fig_trends.add_trace(
-        go.Scatter(
-            x=trends_df.index,
-            y=trends_df["nss"],
-            name=t("nss_legend"),
-            yaxis="y2",
-            line=dict(color="royalblue", width=2),
-        )
-    )
-    fig_trends.update_layout(
-        barmode="stack",
-        yaxis=dict(title=t("mention_axis")),
-        yaxis2=dict(
-            title=t("nss_axis"),
-            overlaying="y",
-            side="right",
-            range=[-105, 105],
-        ),
-        legend=dict(x=0, y=1.1, orientation="h"),
-    )
-    st.plotly_chart(fig_trends, use_container_width=True)
+  fig_trends = go.Figure()
+  fig_trends.add_trace(
+      go.Bar(
+          x=grouped.index,
+          y=grouped["negative"],
+          name=t("neg_vol_legend"),
+          marker_color="crimson",
+      )
+  )
+  fig_trends.add_trace(
+      go.Bar(
+          x=grouped.index,
+          y=grouped["positive"],
+          name=t("pos_vol_legend"),
+          marker_color="mediumseagreen",
+      )
+  )
+  fig_trends.add_trace(
+      go.Scatter(
+          x=grouped.index,
+          y=grouped["nss"],
+          name=t("nss_legend"),
+          yaxis="y2",
+          line=dict(color="royalblue", width=2),
+      )
+  )
+  fig_trends.update_layout(
+      barmode="stack",
+      yaxis=dict(title=t("mention_axis")),
+      yaxis2=dict(
+          title=t("nss_axis"),
+          overlaying="y",
+          side="right",
+          range=[-105, 105],
+      ),
+      legend=dict(x=0, y=1.1, orientation="h"),
+  )
+  st.plotly_chart(fig_trends, use_container_width=True)
 
 with kw_col:
-  neg_texts = brand_data[brand_data["sentiment"] == "negative"]["text"].tolist()
+  neg_texts = target_mentions[target_mentions["sentiment"] == "negative"][
+      "text"
+  ].tolist()
   stop_words = {
       "the",
       "and",
@@ -1228,13 +579,12 @@ with kw_col:
       "as",
       "are",
       "was",
-      "news",
       selected_brand.lower(),
   }
 
   words = []
-  for t_str in neg_texts:
-    tokens = re.findall(r"\b[a-zA-Z]{3,}\b", t_str.lower())
+  for s in neg_texts:
+    tokens = re.findall(r"\b[a-zA-Z]{3,}\b", s.lower())
     words.extend([w for w in tokens if w not in stop_words])
 
   if words:
@@ -1255,10 +605,12 @@ with kw_col:
   else:
     st.info(t("no_keywords"))
 
-# ---------------- SECTION 3: RAW DATA & EXPORT ----------------
+# ==============================================================================
+# 10. SECTION 3: MENTIONS EXPLORER & CSV EXPORT
+# ==============================================================================
 st.subheader(t("table_section"))
 
-csv_data = brand_data.to_csv(index=False).encode("utf-8")
+csv_data = target_mentions.to_csv(index=False).encode("utf-8")
 st.download_button(
     label=t("download_btn", brand=selected_brand),
     data=csv_data,
@@ -1266,12 +618,9 @@ st.download_button(
     mime="text/csv",
 )
 
-columns_to_show = ["timestamp", "text", "sentiment", "sentiment_score"]
-if enable_bert:
-  columns_to_show.extend(["bert_label", "bert_confidence"])
-columns_to_show.append("source")
-
 st.dataframe(
-    brand_data.sort_values(by="timestamp", ascending=False)[columns_to_show],
+    target_mentions.sort_values(by="timestamp", ascending=False)[
+        ["timestamp", "text", "sentiment", "sentiment_score", "source"]
+    ],
     use_container_width=True,
 )
