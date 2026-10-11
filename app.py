@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
@@ -19,7 +20,7 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# 1. 35-LANGUAGE LOCALIZATION ENGINE
+# 1. 35-LANGUAGE TRANSLATION ENGINE
 # ==============================================================================
 LANGUAGES = {
     "English": "en",
@@ -32,27 +33,27 @@ LANGUAGES = {
     "मराठी (Marathi)": "mr",
     "বাংলা (Bengali)": "bn",
     "ગુજરાતી (Gujarati)": "gu",
-    "ਪੰਜਾਬੀ (Punjabi)": "pa",
-    "ଓଡ଼ಿଆ (Odia)": "or",
-    "অসমীয়া (Assamese)": "as",
-    "संस्कृतम् (Sanskrit)": "sa",
-    "मैथिली (Maithili)": "mai",
-    "اردو (Urdu)": "ur",
     "Español (Spanish)": "es",
     "Français (French)": "fr",
     "Deutsch (German)": "de",
     "Italiano (Italian)": "it",
     "Português (Portuguese)": "pt",
     "Русский (Russian)": "ru",
+    "日本語 (Japanese)": "ja",
+    "한국어 (Korean)": "ko",
+    "简体中文 (Chinese Simplified)": "zh-CN",
+    "العربية (Arabic)": "ar",
+    "ਪੰਜਾਬੀ (Punjabi)": "pa",
+    "ଓଡ଼ಿଆ (Odia)": "or",
+    "অসমীয়া (Assamese)": "as",
+    "संस्कृतम् (Sanskrit)": "sa",
+    "मैथिली (Maithili)": "mai",
+    "اردو (Urdu)": "ur",
     "Nederlands (Dutch)": "nl",
     "Polski (Polish)": "pl",
     "Svenska (Swedish)": "sv",
     "Türkçe (Turkish)": "tr",
-    "العربية (Arabic)": "ar",
     "فارسی (Persian)": "fa",
-    "日本語 (Japanese)": "ja",
-    "한국어 (Korean)": "ko",
-    "简体中文 (Chinese Simplified)": "zh-CN",
     "繁體中文 (Chinese Traditional)": "zh-TW",
     "Tiếng Việt (Vietnamese)": "vi",
     "Bahasa Indonesia": "id",
@@ -254,9 +255,7 @@ TRANSLATIONS = {
         "neg_volume": "ప్రతికూల పరిమాణం",
         "articles": "ప్రస్తావనలు",
         "nss": "నికర సెంటిమెంట్ స్కోర్ (NSS)",
-        "normal_status": (
-            "✅ సాధారణ స్థితి: {brand} కోసం ప్రతికూల సంక్షోభం కనుగొనబడలేదు."
-        ),
+        "normal_status": "✅ సాధారణ స్థితి: ప్రతికూల సంక్షోభం కనుగొనబడలేదు.",
         "dispatch_expander": "📢 హెచ్చరికను పంపండి (Webhook / Email)",
         "dispatch_btn": "🚀 PR బృందానికి హెచ్చరిక పంపండి",
         "dispatch_success": "హెచ్చరిక విజయవంతంగా పంపబడింది!",
@@ -321,6 +320,172 @@ TRANSLATIONS = {
         "no_keywords": "வார்த்தைகள் இல்லை.",
         "table_section": "3. பதிவுகள் பட்டியல்",
         "download_btn": "📥 {brand} CSV தரவிறக்கம்",
+    },
+    "മലയാളം (Malayalam)": {
+        "title": "🛡️ ബ്രാൻഡ് സെന്റിമെന്റ് & പ്രശസ്തി മോണിറ്റർ",
+        "subtitle": (
+            "ഡാറ്റ സയൻസ്: VADER & BERT NLP | അനലിറ്റിക്സ്: ഷെയർ ഓഫ് വോയ്സ് &"
+            " ക്രൈസിസ് അലേർട്ട്"
+        ),
+        "settings_header": "⚙️ ബ്രാൻഡ് & ഭാഷാ ക്രമീകരണങ്ങൾ",
+        "target_brand": "ടാർഗെറ്റ് ബ്രാൻഡ്",
+        "competitors": "മത്സരാർത്ഥികൾ",
+        "z_slider": "അലേർട്ട് സെൻസിറ്റിവിറ്റി (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} പ്രതിസന്ധി മുന്നറിയിപ്പ്!",
+        "time_window": "സമയ വിൻഡോ",
+        "z_anomaly": "Z-സ്കോർ അപാകത",
+        "neg_volume": "നെഗറ്റീവ് വോളിയം",
+        "articles": "പരാമർശങ്ങൾ",
+        "nss": "നെറ്റ് സെന്റിമെന്റ് സ്കോർ (NSS)",
+        "normal_status": "✅ സാധാരണ നില: {brand} പ്രതിസന്ധി കണ്ടെത്തിയില്ല.",
+        "dispatch_expander": "📢 അലേർട്ട് അയക്കുക (Webhook / Email)",
+        "dispatch_btn": "🚀 അലേർട്ട് അയക്കുക",
+        "dispatch_success": "അലേർട്ട് വിജയകരമായി അയച്ചു!",
+        "kpi_total": "ആകെ പരാമർശങ്ങൾ",
+        "kpi_nss": "നെറ്റ് സെന്റിമെന്റ് സ്കോർ",
+        "kpi_pos": "പോസിറ്റീവ് പരാമർശങ്ങൾ",
+        "kpi_neg": "നെഗറ്റീവ് പരാമർശങ്ങൾ",
+        "sov_section": "1. ഷെയർ ഓഫ് വോയ്സ് (SoV)",
+        "sov_donut_title": "വോളിയം SoV (%)",
+        "sov_bar_title": "വോളിയം vs റീച്ച് SoV (%)",
+        "metric_label": "മെട്രിക്",
+        "trends_section": "2. സെന്റിമെന്റ് ട്രെൻഡുകൾ ({brand})",
+        "neg_vol_legend": "നെഗറ്റീവ് വോളിയം",
+        "pos_vol_legend": "പോസിറ്റീവ് വോളിയം",
+        "nss_legend": "നെറ്റ് സെന്റിമെന്റ്",
+        "mention_axis": "എണ്ണം",
+        "nss_axis": "സെന്റിമെന്റ് (-100 to +100)",
+        "top_keywords_title": "പ്രധാന നെഗറ്റീവ് വാക്കുകൾ",
+        "freq_label": "ആവൃത്തി",
+        "keyword_label": "കീവേഡ്",
+        "no_keywords": "വാക്കുകൾ ലഭ്യമല്ല.",
+        "table_section": "3. പരാമർശങ്ങളുടെ പട്ടിക",
+        "download_btn": "📥 {brand} CSV ഡൗൺലോഡ് ചെയ്യുക",
+    },
+    "मराठी (Marathi)": {
+        "title": "🛡️ ब्रँड सेंटिमेंट आणि प्रतिष्ठा मॉनिटर",
+        "subtitle": (
+            "डेटा सायन्स: VADER & BERT NLP | विश्लेषण: शेअर ऑफ व्हॉइस आणि संकट"
+            " इशारा"
+        ),
+        "settings_header": "⚙️ ब्रँड आणि भाषा सेटिंग्ज",
+        "target_brand": "लक्षित ब्रँड",
+        "competitors": "स्पर्धक",
+        "z_slider": "संकट इशारा संवेदनशीलता (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} साठी संकट इशारा!",
+        "time_window": "वेळ विंडो",
+        "z_anomaly": "Z-स्कोअर विसंगती",
+        "neg_volume": "नकारात्मक संख्या",
+        "articles": "उल्लेख",
+        "nss": "नेट सेंटिमेंट स्कोअर (NSS)",
+        "normal_status": (
+            "✅ सामान्य स्थिती: कोणतीही नकारात्मक समस्या आढळली नाही."
+        ),
+        "dispatch_expander": "📢 इशारा पाठवा (Webhook / Email)",
+        "dispatch_btn": "🚀 पीआर टीमला इशारा पाठवा",
+        "dispatch_success": "इशारा यशस्वीरित्या पाठवला!",
+        "kpi_total": "एकूण उल्लेख",
+        "kpi_nss": "नेट सेंटिमेंट स्कोअर",
+        "kpi_pos": "सकारात्मक उल्लेख",
+        "kpi_neg": "नकारात्मक उल्लेख",
+        "sov_section": "1. शेअर ऑफ व्हॉइस (SoV)",
+        "sov_donut_title": "व्हॉल्यूम SoV (%)",
+        "sov_bar_title": "व्हॉल्यूम वि. रीच SoV (%)",
+        "metric_label": "मेट्रिक",
+        "trends_section": "2. सेंटिमेंट ट्रेंड्स ({brand})",
+        "neg_vol_legend": "नकारात्मक संख्या",
+        "pos_vol_legend": "सकारात्मक संख्या",
+        "nss_legend": "नेट सेंटिमेंट",
+        "mention_axis": "उल्लेख संख्या",
+        "nss_axis": "सेंटिमेंट (-100 to +100)",
+        "top_keywords_title": "मुख्य नकारात्मक कीवर्ड",
+        "freq_label": "वारंवारता",
+        "keyword_label": "कीवर्ड",
+        "no_keywords": "कोणतेही कीवर्ड आढळले नाहीत.",
+        "table_section": "3. उल्लेख तक्ता",
+        "download_btn": "📥 {brand} डेटा CSV डाउनलोड करा",
+    },
+    "বাংলা (Bengali)": {
+        "title": "🛡️ ব্র্যান্ড সেন্টিমেন্ট ও খ্যাতি মনিটর",
+        "subtitle": (
+            "ডেটা সায়েন্স: VADER & BERT NLP | অ্যানালিটিক্স: শেয়ার অফ ভয়েস ও"
+            " সংকট সতর্কতা"
+        ),
+        "settings_header": "⚙️ ব্র্যান্ড ও ভাষা সেটিংস",
+        "target_brand": "টার্গেট ব্র্যান্ড",
+        "competitors": "প্রতিযোগী",
+        "z_slider": "সতর্কতা সংবেদনশীলতা (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} এর জন্য পিআর সংকট সতর্কতা!",
+        "time_window": "সময় উইন্ডো",
+        "z_anomaly": "Z-স্কোর অসঙ্গতি",
+        "neg_volume": "নেতিবাচক পরিমাণ",
+        "articles": "উল্লেখ",
+        "nss": "নেট সেন্টিমেন্ট স্কোর (NSS)",
+        "normal_status": "✅ স্বাভাবিক অবস্থা: কোনো সংকট ধরা পড়েনি।",
+        "dispatch_expander": "📢 সতর্কতা পাঠান (Webhook / Email)",
+        "dispatch_btn": "🚀 পিআর টিমকে সতর্কতা পাঠান",
+        "dispatch_success": "সতর্কতা সফলভাবে পাঠানো হয়েছে!",
+        "kpi_total": "মোট উল্লেখ",
+        "kpi_nss": "নেট সেন্টিমেন্ট স্কোর",
+        "kpi_pos": "ইতিবাচক উল্লেখ",
+        "kpi_neg": "নেতিবাচক উল্লেখ",
+        "sov_section": "1. শেয়ার অফ ভয়েস (SoV)",
+        "sov_donut_title": "ভলিউম SoV (%)",
+        "sov_bar_title": "ভলিউম বনাম রিচ SoV (%)",
+        "metric_label": "মেট্রিক",
+        "trends_section": "2. সেন্টিমেন্ট ট্রেন্ড ({brand})",
+        "neg_vol_legend": "নেতিবাচক পরিমাণ",
+        "pos_vol_legend": "ইতিবাচক পরিমাণ",
+        "nss_legend": "নেট সেন্টিমেন্ট",
+        "mention_axis": "উল্লেখের সংখ্যা",
+        "nss_axis": "সেন্টিমেন্ট (-100 to +100)",
+        "top_keywords_title": "শীর্ষ নেতিবাচক কিওয়ার্ড",
+        "freq_label": "ফ্রিকোয়েন্সি",
+        "keyword_label": "কিওয়ার্ড",
+        "no_keywords": "কোনো কিওয়ার্ড পাওয়া যায়নি।",
+        "table_section": "3. উল্লেখ তালিকা",
+        "download_btn": "📥 {brand} ডেটা CSV ডাউনলোড করুন",
+    },
+    "ગુજરાતી (Gujarati)": {
+        "title": "🛡️ બ્રાન્ડ સેન્ટિમેન્ટ અને પ્રતિષ્ઠા મોનિટર",
+        "subtitle": (
+            "ડેટા સાયન્સ: VADER & BERT NLP | એનાલિટિક્સ: શેર ઓફ વૉઇસ અને કટોકટી"
+            " ચેતવણી"
+        ),
+        "settings_header": "⚙️ બ્રાન્ડ અને ભાષા સેટિંગ્સ",
+        "target_brand": "ટાર્ગેટ બ્રાન્ડ",
+        "competitors": "હરીફો",
+        "z_slider": "ચેતવણી સંવેદનશીલતા (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} માટે કટોકટી ચેતવણી!",
+        "time_window": "સમય વિંડો",
+        "z_anomaly": "Z-સ્કોર વિસંગતતા",
+        "neg_volume": "નકારાત્મક વોલ્યુમ",
+        "articles": "ઉલ્લેખ",
+        "nss": "નેટ સેન્ટિમેન્ટ સ્કોર (NSS)",
+        "normal_status": "✅ સામાન્ય સ્થિતિ: કોઈ કટોકટી મળી નથી.",
+        "dispatch_expander": "📢 ચેતવણી મોકલો (Webhook / Email)",
+        "dispatch_btn": "🚀 PR ટીમને ચેતવણી મોકલો",
+        "dispatch_success": "ચેતવણી સફળતાપૂર્વક મોકલી!",
+        "kpi_total": "કુલ ઉલ્લેખ",
+        "kpi_nss": "નેટ સેન્ટિમેન્ટ સ્કોર",
+        "kpi_pos": "હકારાત્મક ઉલ્લેખ",
+        "kpi_neg": "નકારાત્મક ઉલ્લેખ",
+        "sov_section": "1. શેર ઓફ વૉઇસ (SoV)",
+        "sov_donut_title": "વોલ્યુમ SoV (%)",
+        "sov_bar_title": "વોલ્યુમ વિ. રીચ SoV (%)",
+        "metric_label": "મેટ્રિક",
+        "trends_section": "2. સેન્ટિમેન્ટ ટ્રેન્ડ્સ ({brand})",
+        "neg_vol_legend": "નકારાત્મક વોલ્યુમ",
+        "pos_vol_legend": "હકારાત્મક વોલ્યુમ",
+        "nss_legend": "નેટ સેન્ટિમેન્ટ",
+        "mention_axis": "સંખ્યા",
+        "nss_axis": "સેન્ટિમેન્ટ (-100 to +100)",
+        "top_keywords_title": "મુખ્ય નકારાત્મક કીવર્ડ્સ",
+        "freq_label": "આવર્તન",
+        "keyword_label": "કીવર્ડ",
+        "no_keywords": "કીવર્ડ્સ મળ્યા નથી.",
+        "table_section": "3. ઉલ્લેખ કોષ્ટક",
+        "download_btn": "📥 {brand} CSV ડાઉનલોડ કરો",
     },
     "Español (Spanish)": {
         "title": "🛡️ Monitor de Reputación y Sentimiento de Marca",
@@ -453,6 +618,135 @@ TRANSLATIONS = {
         "table_section": "3. Erwähnungs-Explorer",
         "download_btn": "📥 Daten für {brand} als CSV Herunterladen",
     },
+    "Italiano (Italian)": {
+        "title": "🛡️ Monitor di Reputazione e Sentiment del Brand",
+        "subtitle": (
+            "Data Science: VADER e BERT NLP | Analisi: Quota di Voce e Allerte"
+            " di Crisi PR"
+        ),
+        "settings_header": "⚙️ Impostazioni e Lingua",
+        "target_brand": "Brand Obiettivo",
+        "competitors": "Concorrenti",
+        "z_slider": "Sensibilità Allerta Crisi (Z-Score)",
+        "crisis_alert_title": "🚨 ALLERTA CRISI PR RILEVATA PER {brand}",
+        "time_window": "Finestra Temporale",
+        "z_anomaly": "Anomalia Z-Score",
+        "neg_volume": "Volume Negativo",
+        "articles": "menzioni",
+        "nss": "Punteggio Netto di Sentiment (NSS)",
+        "normal_status": (
+            "✅ Stato Normale: Nessun picco negativo rilevato per {brand}."
+        ),
+        "dispatch_expander": "📢 Invia Allerta Crisi (Webhook / Email)",
+        "dispatch_btn": "🚀 Invia Webhook al Team PR",
+        "dispatch_success": "Notifica inviata con successo!",
+        "kpi_total": "Menzioni Totali",
+        "kpi_nss": "Sentiment Netto",
+        "kpi_pos": "Menzioni Positive",
+        "kpi_neg": "Menzioni Negative",
+        "sov_section": "1. Quota di Voce (SoV)",
+        "sov_donut_title": "Quota di Voce per Volume (%)",
+        "sov_bar_title": "SoV Volume vs SoV Portata (%)",
+        "metric_label": "Metrica",
+        "trends_section": "2. Trend Sentiment ({brand})",
+        "neg_vol_legend": "Volume Negativo",
+        "pos_vol_legend": "Volume Positivo",
+        "nss_legend": "Sentiment Netto",
+        "mention_axis": "Numero di Menzioni",
+        "nss_axis": "Sentiment Netto (-100 a +100)",
+        "top_keywords_title": "Parole Chiave Negative",
+        "freq_label": "Frequenza",
+        "keyword_label": "Parola Chiave",
+        "no_keywords": "Nessuna parola chiave negativa trovata.",
+        "table_section": "3. Esploratore Menzioni",
+        "download_btn": "📥 Scarica Dati di {brand} in CSV",
+    },
+    "Português (Portuguese)": {
+        "title": "🛡️ Monitor de Reputação e Sentimento da Marca",
+        "subtitle": (
+            "Ciência de Dados: VADER e BERT NLP | Análise: Share of Voice e"
+            " Alerta de Crise"
+        ),
+        "settings_header": "⚙️ Configurações e Idioma",
+        "target_brand": "Marca Alvo",
+        "competitors": "Concorrentes",
+        "z_slider": "Sensibilidade do Alerta (Z-Score)",
+        "crisis_alert_title": "🚨 ALERTA DE CRISE DE RP DETECTADO PARA {brand}",
+        "time_window": "Janela de Tempo",
+        "z_anomaly": "Anomalia Z-Score",
+        "neg_volume": "Volume Negativo",
+        "articles": "menções",
+        "nss": "Pontuação Líquida de Sentimento (NSS)",
+        "normal_status": (
+            "✅ Status Normal: Nenhum pico negativo detectado para {brand}."
+        ),
+        "dispatch_expander": "📢 Disparar Alerta de Crise (Webhook / Email)",
+        "dispatch_btn": "🚀 Enviar Webhook para Equipe de RP",
+        "dispatch_success": "Notificação enviada com sucesso!",
+        "kpi_total": "Total de Menções",
+        "kpi_nss": "Sentimento Líquido",
+        "kpi_pos": "Menções Positivas",
+        "kpi_neg": "Menções Negativas",
+        "sov_section": "1. Share of Voice (SoV)",
+        "sov_donut_title": "Share of Voice por Volume (%)",
+        "sov_bar_title": "SoV Volume vs. SoV Alcance (%)",
+        "metric_label": "Métrica",
+        "trends_section": "2. Tendências de Sentimento ({brand})",
+        "neg_vol_legend": "Volume Negativo",
+        "pos_vol_legend": "Volume Positivo",
+        "nss_legend": "Sentimento Líquido",
+        "mention_axis": "Total de Menções",
+        "nss_axis": "Sentimento Líquido (-100 a +100)",
+        "top_keywords_title": "Principais Palavras-Chave Negativas",
+        "freq_label": "Frequência",
+        "keyword_label": "Palavra-Chave",
+        "no_keywords": "Nenhuma palavra negativa encontrada.",
+        "table_section": "3. Explorador de Menções",
+        "download_btn": "📥 Baixar Dados de {brand} em CSV",
+    },
+    "Русский (Russian)": {
+        "title": "🛡️ Мониторинг репутации и тональности бренда",
+        "subtitle": (
+            "Data Science: VADER и BERT NLP | Аналитика: Доля голоса и"
+            " оповещения о кризисах"
+        ),
+        "settings_header": "⚙️ Настройки бренда и языка",
+        "target_brand": "Целевой бренд",
+        "competitors": "Конкуренты",
+        "z_slider": "Чувствительность к кризисам (Z-Score)",
+        "crisis_alert_title": "🚨 ПР-КРИЗИС ОБНАРУЖЕН ДЛЯ {brand}",
+        "time_window": "Временное окно",
+        "z_anomaly": "Аномалия Z-Score",
+        "neg_volume": "Негативный объем",
+        "articles": "упоминаний",
+        "nss": "Индекс чистой тональности (NSS)",
+        "normal_status": (
+            "✅ Нормальный статус: Кризисных всплесков для {brand} нет."
+        ),
+        "dispatch_expander": "📢 Отправить оповещение (Webhook / Email)",
+        "dispatch_btn": "🚀 Отправить Webhook команде PR",
+        "dispatch_success": "Оповещение успешно отправлено!",
+        "kpi_total": "Всего упоминаний",
+        "kpi_nss": "Чистая тональность",
+        "kpi_pos": "Позитивные упоминания",
+        "kpi_neg": "Негативные упоминания",
+        "sov_section": "1. Доля голоса (Share of Voice)",
+        "sov_donut_title": "Доля голоса по объему (%)",
+        "sov_bar_title": "Объем vs Охват SoV (%)",
+        "metric_label": "Метрика",
+        "trends_section": "2. Тренды тональности ({brand})",
+        "neg_vol_legend": "Негативный объем",
+        "pos_vol_legend": "Позитивный объем",
+        "nss_legend": "Чистая тональность",
+        "mention_axis": "Число упоминаний",
+        "nss_axis": "Тональность (-100 до +100)",
+        "top_keywords_title": "Ключевые негативные слова",
+        "freq_label": "Частота",
+        "keyword_label": "Ключевое слово",
+        "no_keywords": "Негативных слов не найдено.",
+        "table_section": "3. Таблица упоминаний",
+        "download_btn": "📥 Скачать данные {brand} в CSV",
+    },
     "日本語 (Japanese)": {
         "title": "🛡️ ブランド・センチメント＆評判モニター",
         "subtitle": (
@@ -496,6 +790,132 @@ TRANSLATIONS = {
         "table_section": "3. 言及エクスプローラー",
         "download_btn": "📥 {brand} のデータをCSVでダウンロード",
     },
+    "한국어 (Korean)": {
+        "title": "🛡️ 브랜드 감성 및 평판 모니터",
+        "subtitle": (
+            "데이터 사이언스: VADER & BERT NLP | 분석: 점유율(SoV) 및 실시간"
+            " 위기 알림"
+        ),
+        "settings_header": "⚙️ 브랜드 및 언어 설정",
+        "target_brand": "목표 브랜드",
+        "competitors": "경쟁사",
+        "z_slider": "위기 경보 민감도 (Z-Score)",
+        "crisis_alert_title": "🚨 {brand} 홍보 위기 경보 감지!",
+        "time_window": "이상 징후 시간대",
+        "z_anomaly": "Z-점수 이상치",
+        "neg_volume": "부정적 언급량",
+        "articles": "건",
+        "nss": "순 감성 지수 (NSS)",
+        "normal_status": (
+            "✅ 정상 상태: {brand}에 비정상적인 부정 급증이 없습니다."
+        ),
+        "dispatch_expander": "📢 위기 경보 발송 (웹훅 / 이메일)",
+        "dispatch_btn": "🚀 홍보팀에 웹훅 경보 발송",
+        "dispatch_success": "알림이 성공적으로 발송되었습니다!",
+        "kpi_total": "총 언급량",
+        "kpi_nss": "순 감성 지수",
+        "kpi_pos": "긍정적 언급",
+        "kpi_neg": "부정적 언급",
+        "sov_section": "1. 보이스 점유율 (SoV) 추적",
+        "sov_donut_title": "언급량 기준 점유율 (%)",
+        "sov_bar_title": "언급량 vs 도달 범위 점유율 (%)",
+        "metric_label": "지표",
+        "trends_section": "2. 감성 추이 및 주요 키워드 ({brand})",
+        "neg_vol_legend": "부정적 언급량",
+        "pos_vol_legend": "긍정적 언급량",
+        "nss_legend": "순 감성 지수",
+        "mention_axis": "언급 수",
+        "nss_axis": "순 감성 (-100 ~ +100)",
+        "top_keywords_title": "주요 부정 키워드",
+        "freq_label": "빈도",
+        "keyword_label": "키워드",
+        "no_keywords": "부정 키워드가 없습니다.",
+        "table_section": "3. 언급 탐색기",
+        "download_btn": "📥 {brand} 데이터 CSV 다운로드",
+    },
+    "简体中文 (Chinese Simplified)": {
+        "title": "🛡️ 品牌情感与声誉监控器",
+        "subtitle": (
+            "数据科学核心: VADER与BERT NLP | 数据分析核心: 声量份额与实时公关危机预警"
+        ),
+        "settings_header": "⚙️ 品牌与语言设置",
+        "target_brand": "目标品牌",
+        "competitors": "竞争对手",
+        "z_slider": "危机警报灵敏度 (Z-Score)",
+        "crisis_alert_title": "🚨 监测到 {brand} 公关危机激增！",
+        "time_window": "异常时间窗口",
+        "z_anomaly": "Z-Score 异常值",
+        "neg_volume": "负面提及量",
+        "articles": "条提及",
+        "nss": "净情感得分 (NSS)",
+        "normal_status": "✅ 正常状态: 未检测到 {brand} 异常负面激增。",
+        "dispatch_expander": "📢 发送公关危机预警 (Webhook / 邮件)",
+        "dispatch_btn": "🚀 发送模拟 Webhook 预警至公关团队",
+        "dispatch_success": "通知已成功发送至公关团队！",
+        "kpi_total": "总提及量",
+        "kpi_nss": "净情感得分",
+        "kpi_pos": "正面提及",
+        "kpi_neg": "负面提及",
+        "sov_section": "1. 声量份额 (SoV) 跟踪",
+        "sov_donut_title": "提及声量份额 (%)",
+        "sov_bar_title": "声量份额 vs 触达加权份额 (%)",
+        "metric_label": "指标",
+        "trends_section": "2. 情感趋势与核心关键词 ({brand})",
+        "neg_vol_legend": "负面提及量",
+        "pos_vol_legend": "正面提及量",
+        "nss_legend": "净情感得分",
+        "mention_axis": "提及次数",
+        "nss_axis": "净情感 (-100 至 +100)",
+        "top_keywords_title": "主要负面驱动关键词",
+        "freq_label": "频次",
+        "keyword_label": "关键词",
+        "no_keywords": "未发现负面关键词。",
+        "table_section": "3. 提及浏览与详情",
+        "download_btn": "📥 下载 {brand} 数据为 CSV",
+    },
+    "العربية (Arabic)": {
+        "title": "🛡️ مراقب سمعة وانطباعات العلامة التجارية",
+        "subtitle": (
+            "علم البيانات: VADER و BERT NLP | التحليلات: حصة الصوت وتنبيهات"
+            " الأزمات"
+        ),
+        "settings_header": "⚙️ إعدادات العلامة التجارية واللغة",
+        "target_brand": "العلامة التجارية المستهدفة",
+        "competitors": "المنافسون",
+        "z_slider": "حساسية تنبيه الأزمة (Z-Score)",
+        "crisis_alert_title": "🚨 تم رصد أزمة علاقات عامة لـ {brand}!",
+        "time_window": "نافذة وقت الشذوذ",
+        "z_anomaly": "شذوذ Z-Score",
+        "neg_volume": "الحجم السلبي",
+        "articles": "إشارة",
+        "nss": "صافي نقاط الانطباع (NSS)",
+        "normal_status": "✅ الوضع طبيعي: لا توجد أزمات لـ {brand}.",
+        "dispatch_expander": "📢 إرسال تنبيه الأزمة (معاينة Webhook / البريد)",
+        "dispatch_btn": "🚀 إرسال تنبيه Webhook لفريق العلاقات العامة",
+        "dispatch_success": "تم إرسال التنبيه بنجاح!",
+        "kpi_total": "إجمالي الإشارات",
+        "kpi_nss": "صافي نقاط الانطباع",
+        "kpi_pos": "إشارات إيجابية",
+        "kpi_neg": "إشارات سلبية",
+        "sov_section": "1. تتبع حصة الصوت (SoV)",
+        "sov_donut_title": "حصة الصوت من حيث الحجم (%)",
+        "sov_bar_title": "حصة الصوت الحجمية مقابل الوصول (%)",
+        "metric_label": "المقياس",
+        "trends_section": (
+            "2. اتجاهات الانطباعات والكلمات المفتاحية ({brand})"
+        ),
+        "neg_vol_legend": "حجم سلبي",
+        "pos_vol_legend": "حجم إيجابي",
+        "nss_legend": "صافي الانطباع",
+        "mention_axis": "عدد الإشارات",
+        "nss_axis": "صافي الانطباع (-100 إلى +100)",
+        "top_keywords_title": "أبرز الكلمات السلبية",
+        "freq_label": "التكرار",
+        "keyword_label": "الكلمة المفتاحية",
+        "no_keywords": "لا توجد كلمات سلبية.",
+        "table_section": "3. جدول الإشارات",
+        "download_btn": "📥 تنزيل بيانات {brand} بصيغة CSV",
+    },
 }
 
 selected_lang = st.sidebar.selectbox(
@@ -503,9 +923,10 @@ selected_lang = st.sidebar.selectbox(
 )
 
 
+# ---------------- FAST BATCH AUTO-TRANSLATION FOR OTHER LANGUAGES ----------------
 @st.cache_data(show_spinner=False)
-def translate_batch(target_code: str) -> dict:
-  """Translates the base dictionary in a single fast call for other languages."""
+def get_translated_dict(target_code: str) -> dict:
+  """Translates the complete dictionary in a single fast call for other languages."""
   base_dict = TRANSLATIONS["English"]
   if target_code == "en":
     return base_dict
@@ -515,18 +936,14 @@ def translate_batch(target_code: str) -> dict:
   payload = "\n".join(safe_lines)
 
   try:
-    encoded = urllib.parse.quote(payload)
-    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl={target_code}&dt=t&q={encoded}"
-    req = urllib.request.Request(
+    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl={target_code}&dt=t&q={urllib.parse.quote(payload)}"
+    resp = requests.get(
         url,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            )
-        },
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+        timeout=3.5,
     )
-    with urllib.request.urlopen(req, timeout=3.0) as resp:
-      res_json = json.loads(resp.read().decode("utf-8"))
+    if resp.status_code == 200:
+      res_json = resp.json()
       translated_full = "".join([part[0] for part in res_json[0] if part[0]])
       translated_lines = translated_full.split("\n")
 
@@ -542,10 +959,12 @@ def translate_batch(target_code: str) -> dict:
 
 def t(key: str, **kwargs) -> str:
   lang_code = LANGUAGES.get(selected_lang, "en")
+  # 1. Use pre-compiled dictionary if available (instant)
   if selected_lang in TRANSLATIONS and key in TRANSLATIONS[selected_lang]:
     text = TRANSLATIONS[selected_lang][key]
   else:
-    trans_map = translate_batch(lang_code)
+    # 2. Automated batch translation for the remaining languages
+    trans_map = get_translated_dict(lang_code)
     text = trans_map.get(key, TRANSLATIONS["English"].get(key, key))
 
   if kwargs:
@@ -818,30 +1237,30 @@ trend_col, kw_col = st.columns([3, 2])
 with trend_col:
   fig_trends = go.Figure()
   fig_trends.add_trace(
-      go.Bar(
-          x=grouped.index,
-          y=grouped["negative"],
-          name=t("neg_vol_legend"),
-          marker_color="crimson",
-      )
-  )
+        go.Bar(
+            x=grouped.index,
+            y=grouped["negative"],
+            name=t("neg_vol_legend"),
+            marker_color="crimson",
+        )
+    )
   fig_trends.add_trace(
-      go.Bar(
-          x=grouped.index,
-          y=grouped["positive"],
-          name=t("pos_vol_legend"),
-          marker_color="mediumseagreen",
-      )
-  )
+        go.Bar(
+            x=grouped.index,
+            y=grouped["positive"],
+            name=t("pos_vol_legend"),
+            marker_color="mediumseagreen",
+        )
+    )
   fig_trends.add_trace(
-      go.Scatter(
-          x=grouped.index,
-          y=grouped["nss"],
-          name=t("nss_legend"),
-          yaxis="y2",
-          line=dict(color="royalblue", width=2),
-      )
-  )
+        go.Scatter(
+            x=grouped.index,
+            y=grouped["nss"],
+            name=t("nss_legend"),
+            yaxis="y2",
+            line=dict(color="royalblue", width=2),
+        )
+    )
   fig_trends.update_layout(
       barmode="stack",
       yaxis=dict(title=t("mention_axis")),
@@ -850,7 +1269,7 @@ with trend_col:
           overlaying="y",
           side="right",
           range=[-105, 105],
-        ),
+      ),
       legend=dict(x=0, y=1.1, orientation="h"),
   )
   st.plotly_chart(fig_trends, use_container_width=True)
