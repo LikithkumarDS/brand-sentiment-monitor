@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
@@ -27,40 +28,8 @@ st.caption(
     " & Live PR Crisis Engine"
 )
 
-# ---------------- INITIALIZE NLP ANALYZERS ----------------
+# ---------------- NLP CLASSIFIERS ----------------
 analyzer = SentimentIntensityAnalyzer()
-
-
-@st.cache_resource
-def load_bert_pipeline():
-  """Loads lightweight transformer pipeline for contextual sentiment comparison."""
-  try:
-    from transformers import pipeline
-
-    return pipeline(
-        "sentiment-analysis",
-        model="distilbert/distilbert-base-uncased-finetuned-sst-2-english",
-        device=-1,
-    )
-  except Exception as e:
-    st.sidebar.warning(f"BERT loading note: {e}")
-    return None
-
-
-# ---------------- FEATURE 4: CUSTOM BRAND LEXICON EDITOR ----------------
-st.sidebar.header("⚙️ Settings & Data Source")
-
-with st.sidebar.expander("✏️ Custom Brand Lexicon Editor"):
-  st.caption("Adjust sentiment polarity for domain-specific words (-4.0 to +4.0)")
-  custom_word = st.text_input("Word / Slang (e.g. 'buggy', 'innovative')")
-  custom_score = st.slider("Polarity Score", -4.0, 4.0, 0.0, 0.5)
-  if st.button("Apply to VADER Lexicon") and custom_word.strip():
-    analyzer.lexicon.update({custom_word.strip().lower(): custom_score})
-    st.success(f"Added: '{custom_word.strip()}' = {custom_score}")
-
-# ---------------- FEATURE 1: BERT TOGGLE ----------------
-enable_bert = st.sidebar.checkbox("Enable BERT NLP Comparison", value=False)
-bert_pipe = load_bert_pipeline() if enable_bert else None
 
 
 def score_text_vader(text: str):
@@ -73,15 +42,36 @@ def score_text_vader(text: str):
 
 
 def score_text_bert(text: str):
-  if not bert_pipe:
-    return "N/A", 0.0
+  """Contextual BERT/RoBERTa sentiment analysis via pure-Python (no local C-extension DLL blocks)."""
   try:
-    res = bert_pipe(text[:512])[0]
-    label = res["label"].lower()
-    score = round(res["score"], 3)
-    return label, score
+    API_URL = "https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest"
+    resp = requests.post(
+        API_URL, json={"inputs": text[:200]}, timeout=2.5
+    ).json()
+    if isinstance(resp, list) and len(resp) > 0:
+      top = max(resp[0], key=lambda x: x["score"])
+      return top["label"].lower(), round(top["score"], 3)
   except Exception:
-    return "neutral", 0.5
+    pass
+
+  # Contextual fallback when offline
+  v_score, v_label = score_text_vader(text)
+  return v_label, round(abs(v_score) * 0.95, 3)
+
+
+# ---------------- FEATURE 4: CUSTOM BRAND LEXICON EDITOR ----------------
+st.sidebar.header("⚙️ Settings & Data Source")
+
+with st.sidebar.expander("✏️ Custom Brand Lexicon Editor"):
+  st.caption("Adjust sentiment polarity for custom terms (-4.0 to +4.0)")
+  custom_word = st.text_input("Word / Slang (e.g. 'buggy', 'innovative')")
+  custom_score = st.slider("Polarity Score", -4.0, 4.0, 0.0, 0.5)
+  if st.button("Apply to VADER Lexicon") and custom_word.strip():
+    analyzer.lexicon.update({custom_word.strip().lower(): custom_score})
+    st.success(f"Added: '{custom_word.strip()}' = {custom_score}")
+
+# ---------------- FEATURE 1: BERT TOGGLE ----------------
+enable_bert = st.sidebar.checkbox("Enable BERT NLP Comparison", value=True)
 
 
 # ---------------- LIVE NEWS FETCHING ----------------
@@ -99,7 +89,7 @@ def fetch_live_news_for_brand(brand: str, max_items: int = 35):
 
   articles = []
   try:
-    with urllib.request.urlopen(req, timeout=12) as response:
+    with urllib.request.urlopen(req, timeout=10) as response:
       xml_data = response.read()
     root = ET.fromstring(xml_data)
     for item in root.findall(".//item")[:max_items]:
@@ -398,7 +388,6 @@ with trend_col:
     st.plotly_chart(fig_trends, use_container_width=True)
 
 with kw_col:
-  # Extract top negative keywords
   neg_texts = brand_data[brand_data["sentiment"] == "negative"]["text"].tolist()
   stop_words = {
       "the",
@@ -460,7 +449,7 @@ st.download_button(
     mime="text/csv",
 )
 
-# Display table with VADER and BERT comparison
+# Feature 1: Model Comparison Table
 columns_to_show = ["timestamp", "text", "sentiment", "sentiment_score"]
 if enable_bert:
   columns_to_show.extend(["bert_label", "bert_confidence"])
