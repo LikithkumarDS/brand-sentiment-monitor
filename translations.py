@@ -330,3 +330,21 @@ def get_translation(key: str, lang_name: str, **kwargs) -> str:
     except Exception:
       pass
   return text
+
+import requests
+
+
+@st.cache_data(show_spinner=False)
+def translate_dynamic(text: str, target_lang_code: str) -> str:
+  if target_lang_code == "en" or not text:
+    return text
+  try:
+    encoded = urllib.parse.quote(text)
+    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={target_lang_code}&dt=t&q={encoded}"
+    resp = requests.get(url, timeout=3.0)
+    if resp.status_code == 200:
+      res_json = resp.json()
+      return "".join([part[0] for part in res_json[0] if part[0]])
+  except Exception:
+    pass
+  return text
