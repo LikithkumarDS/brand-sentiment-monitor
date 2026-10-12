@@ -94,6 +94,9 @@ from translations import ALL_PRECOMPILED as TRANSLATIONS
 
 
 # Language selection
+import translations
+TRANSLATIONS = translations.ALL_PRECOMPILED
+
 selected_lang = st.sidebar.selectbox(
     "🌐 Language / ಭಾಷೆ / भाषा",
     list(LANGUAGES.keys()),
