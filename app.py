@@ -537,15 +537,35 @@ selected_lang = st.sidebar.selectbox(
 
 
 # Translation helper function
-def t(key: str, **kwargs) -> str:
-  lang_dict = TRANSLATIONS.get(selected_lang, TRANSLATIONS["English"])
-  text = lang_dict.get(key, TRANSLATIONS["English"].get(key, key))
-  if kwargs:
+@st.cache_data(show_spinner=False)
+def get_translated_dict(target_name: str, target_code: str):
+    if target_name in TRANSLATIONS:
+        return TRANSLATIONS[target_name]
     try:
-      text = text.format(**kwargs)
+        keys = list(TRANSLATIONS["English"].keys())
+        joined = " [[--]] ".join([TRANSLATIONS["English"][k] for k in keys])
+        url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=" + target_code + "&dt=t&q=" + urllib.parse.quote(joined)
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            trans_joined = "".join([part[0] for part in data[0] if part[0]])
+            vals = trans_joined.split("[[--]]")
+            if len(vals) == len(keys):
+                return {keys[i]: vals[i].strip() for i in range(len(keys))}
     except Exception:
-      pass
-  return text
+        pass
+    return TRANSLATIONS["English"]
+
+def t(key: str, **kwargs) -> str:
+    lang_code = LANGUAGES.get(selected_lang, "en")
+    lang_dict = get_translated_dict(selected_lang, lang_code)
+    text = lang_dict.get(key, TRANSLATIONS["English"].get(key, key))
+    if kwargs:
+        try:
+            text = text.format(**kwargs)
+        except Exception:
+            pass
+    return text
 
 
 # ==============================================================================
