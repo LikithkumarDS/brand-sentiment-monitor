@@ -1,1 +1,49 @@
+﻿name: Keep Streamlit App Awake
 
+on:
+  schedule:
+    # Runs every 4 hours automatically
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-and-wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Ping and Wake Streamlit App
+        run: |
+          python - << 'EOF'
+          import time
+          from playwright.sync_api import sync_playwright
+
+          url = "https://likithkumards-brand-sentiment-monitor-app-pjgu6a.streamlit.app/"
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              page = browser.new_page()
+              print(f"Visiting {url}...")
+              
+              # domcontentloaded avoids hanging on Streamlit's persistent websocket
+              page.goto(url, wait_until="domcontentloaded", timeout=45000)
+              time.sleep(8)
+
+              wake_btn = page.get_by_role("button", name="Yes, get this app back up")
+              if wake_btn.count() > 0 and wake_btn.first.is_visible():
+                  print("App was sleeping. Clicking wake button...")
+                  wake_btn.first.click()
+                  time.sleep(15)
+                  print("App wake up triggered successfully!")
+              else:
+                  print("App is already awake and responsive!")
+
+              browser.close()
+          EOF
